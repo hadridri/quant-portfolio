@@ -40,7 +40,8 @@ def watchlist() -> list[str]:
 
 
 def send_email(subject: str, text: str, html: str) -> bool:
-    host, user, pwd = os.getenv("SMTP_HOST"), os.getenv("SMTP_USER"), os.getenv("SMTP_PASSWORD")
+    host, user = os.getenv("SMTP_HOST"), os.getenv("SMTP_USER")
+    pwd = (os.getenv("SMTP_PASSWORD") or "").replace(" ", "")  # Gmail shows app passwords in groups of 4
     if not (host and user and pwd):
         print("  e-mail skipped: SMTP_HOST / SMTP_USER / SMTP_PASSWORD not set")
         return False
