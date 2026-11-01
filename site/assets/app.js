@@ -36,7 +36,7 @@
   let liveApi = null;
   async function hasApi() {
     if (liveApi !== null) return liveApi;
-    if (location.protocol === "file:") return (liveApi = false);
+    if (location.protocol === "file:" || location.hostname.endsWith("github.io")) return (liveApi = false);
     try {
       const ctl = new AbortController();
       setTimeout(() => ctl.abort(), 2500);
