@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pairs Trading Lab — Hadrien</title>
+  <meta name="description" content="Backtest any pair: Engle-Granger cointegration, rolling hedge ratio, z-score signals, half-life and transaction costs.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%239b6bff'/><path d='M6 22l6-7 5 4 9-11' stroke='white' stroke-width='2.5' fill='none'/></svg>">
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+</head>
+<body>
+  <nav class="nav">
+    <div class="wrap">
+      <a class="brand" href="index.html"><span class="brand-mark">H</span>Hadrien</a>
+      <div class="nav-links">
+        <a href="montecarlo.html" class="keep">01 VaR</a>
+        <a href="pairs.html" class="active keep">02 Pairs</a>
+        <a href="sma.html" class="keep">03 SMA</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="page-head">
+    <div class="wrap">
+      <span class="eyebrow">Project 02 · Statistical arbitrage</span>
+      <h1>Two stocks that move together, <em>until they don't.</em></h1>
+      <p class="lede">Type any two Yahoo Finance tickers. The Python engine downloads both histories, runs the Engle-Granger cointegration test, estimates a rolling hedge ratio, trades the z-score of the spread with a stop-loss, and reports whether the half-life of mean reversion is tradeable after costs.</p>
+    </div>
+  </header>
+
+  <main class="wrap layout">
+    <aside class="controls">
+      <h4>Pair to backtest</h4>
+      <form id="form">
+        <div class="row2">
+          <div class="field"><label for="a">Ticker A</label><input id="a" value="V" autocomplete="off" spellcheck="false"></div>
+          <div class="field"><label for="b">Ticker B</label><input id="b" value="MA" autocomplete="off" spellcheck="false"></div>
+        </div>
+        <div class="presets">
+          <button type="button" data-p="V,MA">V / MA</button>
+          <button type="button" data-p="EWA,EWC">EWA / EWC</button>
+          <button type="button" data-p="KO,PEP">KO / PEP</button>
+          <button type="button" data-p="XOM,CVX">XOM / CVX</button>
+          <button type="button" data-p="GS,MS">GS / MS</button>
+          <button type="button" data-p="SPY,IVV">SPY / IVV</button>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="period">History</label>
+            <select id="period"><option>2y</option><option>3y</option><option selected>5y</option><option>10y</option></select></div>
+          <div class="field"><label for="window">z window</label><input id="window" type="number" value="30" min="5" max="250"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="entry">Entry |z|</label><input id="entry" type="number" value="2" step="0.1" min="0.1"></div>
+          <div class="field"><label for="exit">Exit |z|</label><input id="exit" type="number" value="0.5" step="0.1" min="0"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="stop">Stop |z|</label><input id="stop" type="number" value="3.5" step="0.1" min="0.2"></div>
+          <div class="field"><label for="cost">Cost bps/leg</label><input id="cost" type="number" value="5" step="1" min="0"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="hedge">Hedge window</label><input id="hedge" type="number" value="120" min="30" max="500"></div>
+          <div class="field"><label for="rolling">Hedge ratio</label>
+            <select id="rolling"><option value="1" selected>Rolling</option><option value="0">Static (full)</option></select></div>
+        </div>
+        <button class="btn primary" id="run" type="submit">Backtest pair <span class="arr">→</span></button>
+      </form>
+      <div class="error" id="error"></div>
+      <div class="mode" id="mode"></div>
+    </aside>
+
+    <section class="results" id="results">
+      <div class="verdict" id="verdict"><span class="badge" id="v-badge">—</span><p id="v-text">Loading…</p></div>
+
+      <div class="tiles">
+        <div class="tile"><div class="label">Engle-Granger p</div><div class="value" id="t-p">—</div><div class="sub" id="t-adf">—</div></div>
+        <div class="tile"><div class="label">Half-life</div><div class="value" id="t-hl">—</div><div class="sub">ideal 5–30 days</div></div>
+        <div class="tile"><div class="label">Hedge ratio β</div><div class="value" id="t-beta">—</div><div class="sub" id="t-r2">—</div></div>
+        <div class="tile"><div class="label">Today's z</div><div class="value" id="t-z">—</div><div class="sub" id="t-pos">—</div></div>
+        <div class="tile"><div class="label">Sharpe (net)</div><div class="value" id="t-sh">—</div><div class="sub" id="t-cagr">—</div></div>
+        <div class="tile"><div class="label">Max drawdown</div><div class="value down" id="t-dd">—</div><div class="sub" id="t-vol">—</div></div>
+        <div class="tile"><div class="label">Trades</div><div class="value" id="t-n">—</div><div class="sub" id="t-win">—</div></div>
+        <div class="tile"><div class="label">Time in market</div><div class="value" id="t-tim">—</div><div class="sub" id="t-cost">—</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Z-score &amp; signals</h3><p class="note">▲ long spread · ▼ short spread · ● exit · ✕ stop-loss</p></div>
+        <div id="c-z" class="chart tall"></div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="card-head"><h3>Prices, base 100</h3></div>
+          <div id="c-px" class="chart"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Equity curve (net of costs)</h3></div>
+          <div id="c-eq" class="chart"></div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="card-head"><h3>Does the relationship hold?</h3><p class="note">Rolling 1-year cointegration p-value</p></div>
+          <div id="c-roll" class="chart"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Hedge ratio over time</h3><p class="note">β used each day (past data only)</p></div>
+          <div id="c-beta" class="chart"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Latest trades</h3></div>
+        <div class="table-scroll"><table class="data" id="trades"></table></div>
+      </div>
+    </section>
+  </main>
+
+  <section class="method">
+    <div class="wrap">
+      <span class="eyebrow">Methodology</span>
+      <div class="steps" style="margin-top:28px">
+        <div class="step"><div class="num">01</div><h4>Cointegration</h4><p><code>statsmodels.coint</code> (Engle-Granger) on log prices. Require p &lt; 0.05. A similar-looking chart is not evidence.</p></div>
+        <div class="step"><div class="num">02</div><h4>Hedge ratio</h4><p>OLS <code>log A = α + β·log B + ε</code>. In the backtest β is re-estimated on a rolling window and lagged one day, which removes look-ahead bias.</p></div>
+        <div class="step"><div class="num">03</div><h4>Z-score</h4><p><code>z = (spread − mean₃₀) / std₃₀</code>, the number of standard deviations the spread sits from its recent average.</p></div>
+        <div class="step"><div class="num">04</div><h4>Signals</h4><p>Long the spread when z &lt; −2 and short it when z &gt; +2. Exit when |z| &lt; 0.5. Stop out when |z| &gt; 3.5, a sign the relationship may have broken.</p></div>
+        <div class="step"><div class="num">05</div><h4>Half-life &amp; costs</h4><p>An AR(1) / Ornstein-Uhlenbeck fit gives the half-life. Under 1 day is noise, over 30 days lets costs eat the edge. Fills happen at the next close, with fees charged on both legs.</p></div>
+      </div>
+      <div class="prose">
+        <h3>What the presets teach</h3>
+        <ul>
+          <li><strong>KO / PEP</strong>, the textbook pair, is <em>not</em> cointegrated over the last five years. The famous examples rarely survive a test on current data.</li>
+          <li><strong>V / MA</strong> and <strong>EWA / EWC</strong> pass the test, but their half-lives sit at the edge of the window. Statistical significance alone is not enough for an edge.</li>
+          <li><strong>SPY / IVV</strong> track the same index, so they are strongly cointegrated with a half-life under one day. That spread is noise and tracking error, and costs consume all of it.</li>
+          <li>The <strong>rolling p-value chart</strong> shows that cointegration comes and goes over time. It needs re-testing, not a single test at the start.</li>
+        </ul>
+        <p>Code: <code>quant/pairs.py</code>. Press F5 in Spyder to backtest a pair from the console.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer><div class="wrap"><a href="index.html">← Back to portfolio</a><span>Educational project · not investment advice</span></div></footer>
+
+  <script src="assets/app.js"></script>
+  <script src="assets/pairs.js"></script>
+</body>
+</html>
