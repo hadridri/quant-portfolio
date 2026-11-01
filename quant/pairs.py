@@ -71,15 +71,25 @@ def generate_positions(z: pd.Series, entry: float, exit_: float, stop: float) ->
 
 def run(ticker_a: str = "KO", ticker_b: str = "PEP", period: str = "5y", window: int = 30,
         hedge_window: int = 120, entry: float = 2.0, exit_: float = 0.5, stop: float = 3.5,
-        cost_bps: float = 5.0, rolling: bool = True) -> dict:
-    if ticker_a.strip().upper() == ticker_b.strip().upper():
+        cost_bps: float = 5.0, rolling: bool = True, closes: pd.DataFrame | None = None) -> dict:
+    """`closes` (optional): preloaded close prices, used by build_static.py to avoid
+    one download per pair."""
+    ticker_a, ticker_b = ticker_a.strip().upper(), ticker_b.strip().upper()
+    if ticker_a == ticker_b:
         raise DataError("Choose two different tickers.")
     if not (0 <= exit_ < entry < stop):
         raise DataError("Thresholds must satisfy 0 <= exit < entry < stop.")
     window = int(np.clip(window, 5, 250))
     hedge_window = int(np.clip(hedge_window, 30, 500))
+    min_obs = hedge_window + window + 60
 
-    prices = get_prices([ticker_a, ticker_b], period=period, min_obs=hedge_window + window + 60)
+    if closes is None:
+        prices = get_prices([ticker_a, ticker_b], period=period, min_obs=min_obs)
+    else:
+        prices = closes[[ticker_a, ticker_b]].dropna()
+        prices = prices[prices.index >= prices.index[-1] - pd.DateOffset(years=int(period[:-1]))]
+        if len(prices) < min_obs:
+            raise DataError(f"Only {len(prices)} common trading days for {ticker_a} / {ticker_b}.")
     a, b = prices.columns
     ly, lx = np.log(prices[a]), np.log(prices[b])
 
@@ -151,11 +161,11 @@ def run(ticker_a: str = "KO", ticker_b: str = "PEP", period: str = "5y", window:
     cointegrated = p_value < 0.05
     hl_ok = 5 <= hl <= 30
     if cointegrated and hl_ok:
-        verdict = ("Tradeable", f"Cointegrated (p = {p_value:.3f}) with a {hl:.1f}-day half-life, inside the 5-30 day sweet spot.")
+        verdict = ("Tradeable", f"Linked (p = {p_value:.3f}) and the gap closes by half in about {hl:.0f} days.")
     elif cointegrated:
-        verdict = ("Caution", f"Cointegrated (p = {p_value:.3f}) but the half-life of {hl:.1f} days is outside 5-30 days.")
+        verdict = ("Caution", f"Linked (p = {p_value:.3f}), but the gap takes {hl:.0f} days to close by half (ideal: 5-30).")
     else:
-        verdict = ("Not cointegrated", f"Engle-Granger p-value {p_value:.3f} > 0.05: any mean reversion is not statistically supported.")
+        verdict = ("Not linked", f"p-value {p_value:.3f} is above 0.05: nothing says the gap will close.")
 
     pts = lambda ev: [e for e in events if e["type"] == ev]
     result = {

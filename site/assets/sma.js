@@ -1,7 +1,7 @@
 (() => {
-  const { fmt, load, setMode, colors: C, plot } = Q;
+  const { fmt, load, setMode, colors: C, plot, universe, snapName, fillList } = Q;
   const $ = (id) => document.getElementById(id);
-  const SNAPSHOTS = ["SPY", "QQQ", "AAPL", "GLD"];
+  fillList("sma-list", "sma");
 
   document.querySelectorAll(".presets button").forEach((b) => b.addEventListener("click", () => { $("ticker").value = b.dataset.t; run(); }));
   $("form").addEventListener("submit", (e) => { e.preventDefault(); run(); });
@@ -10,7 +10,8 @@
     const ticker = $("ticker").value.trim().toUpperCase();
     const q = new URLSearchParams({ ticker, fast: $("fast").value, slow: $("slow").value, years: $("years").value, cost: $("cost").value, execution: $("execution").value });
     const isDefault = q.get("fast") === "50" && q.get("slow") === "200" && q.get("years") === "20" && q.get("cost") === "10" && q.get("execution") === "next_open";
-    const snap = isDefault && SNAPSHOTS.includes(ticker) ? `sma_${ticker}` : null;
+    const u = await universe();
+    const snap = isDefault && u && u.sma.includes(ticker) ? `sma_${snapName(ticker)}` : null;
 
     $("results").classList.add("loading"); $("run").disabled = true; $("error").classList.remove("show");
     try {
@@ -29,7 +30,7 @@
     const bull = st.regime === "bullish";
     $("status").style.color = bull ? C.up : C.down;
     $("s-eyebrow").textContent = `${p.ticker} · as of ${st.as_of}`;
-    $("s-regime").textContent = bull ? `Golden regime: SMA ${p.fast} above ${p.slow}` : `Death regime: SMA ${p.fast} below ${p.slow}`;
+    $("s-regime").textContent = bull ? `Golden cross: SMA ${p.fast} above ${p.slow}` : `Death cross: SMA ${p.fast} below ${p.slow}`;
     $("s-detail").textContent = st.last_cross
       ? `Last ${st.last_cross.type} cross on ${st.last_cross.date} (${st.days_since_cross} sessions ago). Gap between averages: ${fmt.spct(st.gap)}.`
       : "No cross in the selected window.";
@@ -62,7 +63,7 @@
 
     $("comp").innerHTML = `<tr><th>Variant</th><th>CAGR</th><th>Total</th><th>Vol</th><th>Sharpe</th><th>Sortino</th><th>Max DD</th><th>Calmar</th></tr>` +
       d.comparison.map((r, i) => `<tr${i === 0 ? ' class="hl"' : ""}><td>${r.name}</td><td>${fmt.pct(r.cagr)}</td><td>${fmt.pct(r.total_return, 0)}</td><td>${fmt.pct(r.volatility, 1)}</td><td>${fmt.num(r.sharpe)}</td><td>${fmt.num(r.sortino)}</td><td>${fmt.pct(r.max_drawdown, 1)}</td><td>${fmt.num(r.calmar)}</td></tr>`).join("");
-    $("comp-text").textContent = `Look-ahead bias adds ${fmt.spct(s.lookahead_bias)} a year, and skipping costs adds ${fmt.spct(s.cost_drag)} a year. Both look small per year but compound over ${p.years} years. Execution: ${p.execution.replace("_", " ")}.`;
+    $("comp-text").innerHTML = `<b>How to read:</b> "Look-ahead" trades on the same day as the signal, which is impossible in real life. It adds ${fmt.spct(s.lookahead_bias)} a year; ignoring costs adds ${fmt.spct(s.cost_drag)} a year. The realistic line is the one that counts.`;
 
     const yrs = d.yearly.map((y) => String(y.year)), ex = d.yearly.map((y) => y.strategy - y.buy_hold);
     plot("c-year", [{
@@ -72,14 +73,10 @@
       hovertemplate: "%{x} · %{customdata[2]}<br>Strategy %{customdata[0]:.1%}<br>Buy & hold %{customdata[1]:.1%}<br>Excess %{y:.1%}<extra></extra>",
     }], { yaxis: { tickformat: ".0%" }, showlegend: false, hovermode: "closest" });
 
-    const beats = s.sharpe > b.sharpe, helps = s.max_drawdown > b.max_drawdown;
-    const choppy = d.yearly.filter((y) => y.regime === "choppy"), trend = d.yearly.filter((y) => y.regime === "trending");
-    const avg = (a) => (a.length ? a.reduce((m, y) => m + (y.strategy - y.buy_hold), 0) / a.length : NaN);
-    $("conclusion").textContent = `On ${p.ticker} over ${p.start.slice(0, 4)}–${p.end.slice(0, 4)}, the realistic strategy compounds at ${fmt.pct(s.cagr)} against ${fmt.pct(b.cagr)} for buy & hold, `
-      + `with a Sharpe of ${fmt.num(s.sharpe)} against ${fmt.num(b.sharpe)} and a maximum drawdown of ${fmt.pct(s.max_drawdown, 1)} against ${fmt.pct(b.max_drawdown, 1)}. `
-      + (beats ? "It beats buy & hold on a risk-adjusted basis" : "It does not beat buy & hold on a risk-adjusted basis")
-      + (helps ? ", and its main value is drawdown control: it sits in cash through the deepest bear markets. " : ". ")
-      + `In trending years it averages ${fmt.spct(avg(trend), 1)} relative to buy & hold, against ${fmt.spct(avg(choppy), 1)} in choppy years, where whipsaws do the damage.`;
+    const helps = s.max_drawdown > b.max_drawdown;
+    $("conclusion").textContent = `On ${p.ticker} since ${p.start.slice(0, 4)}: ${fmt.pct(s.cagr)} a year for the strategy vs ${fmt.pct(b.cagr)} for buy & hold. `
+      + (s.cagr >= b.cagr ? "The strategy earned more. " : "Buy & hold earned more. ")
+      + (helps ? `But the worst fall was ${fmt.pct(s.max_drawdown, 0)} instead of ${fmt.pct(b.max_drawdown, 0)}: the strategy mainly reduces risk.` : `Its worst fall was ${fmt.pct(s.max_drawdown, 0)} vs ${fmt.pct(b.max_drawdown, 0)}.`);
   }
 
   run();

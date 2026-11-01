@@ -1,8 +1,12 @@
 # Quant Research Portfolio — Hadrien Bonhomme
 
-Three risk-first quant projects built end to end in Python, served as an interactive website.
-The models run **live on Yahoo Finance data** through a Flask API. A static snapshot of each
-project is published to GitHub Pages, so recruiters can browse the site without a server.
+Portfolio risk simulator, personal project in Python.
+
+**Live site:** https://hadridri.github.io/quant-portfolio/
+
+The site works on its own: every weekday, GitHub Actions runs the Python models
+(`build_static.py`) on about 40 tickers and publishes the results. For any other
+ticker, run the app locally (see below).
 
 | # | Project | What it shows |
 |---|---------|---------------|
@@ -10,27 +14,19 @@ project is published to GitHub Pages, so recruiters can browse the site without 
 | 02 | **Pairs trading lab** | Any two tickers: Engle-Granger cointegration, rolling hedge ratio (no look-ahead), z-score signals with stop-loss, OU half-life, costs, rolling cointegration stability |
 | 03 | **SMA 50/200 crossover** | Next-open execution, transaction costs, buy & hold benchmark, look-ahead bias measurement, trending vs choppy years, **e-mail / push alert on every golden or death cross** |
 
-## Run locally
+## Run locally (any ticker)
 
-```bash
-pip install -r requirements.txt
-python app.py          # http://127.0.0.1:8050
-```
+In **Spyder**: open `app.py`, press **F5**, then go to http://127.0.0.1:8050.
+The site then accepts any Yahoo Finance ticker and shows every setting.
 
-In **Spyder**, open `app.py` and press F5, then open http://127.0.0.1:8050.
-Each model also runs on its own and prints a report:
-
-```bash
-python -m quant.montecarlo
-python -m quant.pairs
-python -m quant.sma
-```
+Each model also runs on its own in Spyder (F5 on `quant/montecarlo.py`, `quant/pairs.py`, `quant/sma.py`)
+or from a terminal: `python -m quant.pairs`.
 
 ## Structure
 
 ```
 app.py                 Flask server (API + website)
-build_static.py        pre-computes JSON snapshots into site/data for GitHub Pages
+build_static.py        runs the models on ~40 tickers into site/data (daily, GitHub Actions)
 quant/
   data.py              yfinance download, 6-hour disk cache, performance stats
   montecarlo.py        Project 1

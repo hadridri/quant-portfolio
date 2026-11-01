@@ -43,11 +43,22 @@
       const r = await fetch("/api/health", { signal: ctl.signal });
       liveApi = r.ok && (await r.json()).ok === true;
     } catch { liveApi = false; }
+    document.body.classList.toggle("live", liveApi);
     return liveApi;
   }
 
-  /* Returns { data, mode } where mode is "live" or "snapshot".
-     Throws Error(message) for invalid user input. */
+  // Tickers pre-computed daily by build_static.py (GitHub Actions)
+  let universeP = null;
+  const universe = () => (universeP ||= fetch("data/universe.json").then((r) => (r.ok ? r.json() : null)).catch(() => null));
+  const snapName = (...t) => t.map((x) => x.toUpperCase().replace("^", "-")).join("_"); // matches build_static.fname
+  async function fillList(id, key) {
+    const u = await universe();
+    const el = document.getElementById(id);
+    if (u && el) el.innerHTML = u[key].map((t) => `<option value="${t}">`).join("");
+  }
+
+  /* Returns { data, mode }: "live" when app.py runs locally, else the daily
+     pre-computed file. `snapshot` is null when the inputs were not pre-computed. */
   async function load(apiPath, snapshot) {
     if (await hasApi()) {
       const r = await fetch(apiPath);
@@ -55,18 +66,15 @@
       if (!r.ok) throw new Error(body.error || `Request failed (${r.status})`);
       return { data: body, mode: "live" };
     }
-    if (!snapshot) throw new Error("This query needs the Python server. Run `python app.py` locally to load any ticker live.");
-    const r = await fetch(`data/${snapshot}.json`);
-    if (!r.ok) throw new Error("Snapshot not available for these inputs. Run `python app.py` for live data.");
+    const r = snapshot ? await fetch(`data/${snapshot}.json`) : null;
+    if (!r || !r.ok) throw new Error("Not in the list. Pick a ticker from the suggestions.");
     return { data: await r.json(), mode: "snapshot" };
   }
 
   function setMode(el, mode, extra = "") {
     if (!el) return;
     el.className = `mode ${mode}`;
-    el.innerHTML = mode === "live"
-      ? `<span class="dot"></span>Live · Python + yfinance ${extra}`
-      : `<span class="dot"></span>Static snapshot ${extra} · run <code>python app.py</code> for any ticker`;
+    el.innerHTML = `<span class="dot"></span>${mode === "live" ? "Live data" : "Updated daily"} ${extra}`;
   }
 
   // ---------- Plotly theme ----------
@@ -90,5 +98,5 @@
   const plotConfig = { displayModeBar: false, responsive: true };
   const plot = (id, traces, layout) => Plotly.react(id, traces, baseLayout(layout), plotConfig);
 
-  window.Q = { fmt, load, setMode, colors, plot, baseLayout, reduceMotion, hasApi };
+  window.Q = { fmt, load, setMode, colors, plot, baseLayout, reduceMotion, hasApi, universe, snapName, fillList };
 })();

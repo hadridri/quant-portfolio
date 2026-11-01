@@ -1,7 +1,7 @@
 (() => {
-  const { fmt, load, setMode, colors: C, plot } = Q;
+  const { fmt, load, setMode, colors: C, plot, universe, snapName, hasApi, fillList } = Q;
   const $ = (id) => document.getElementById(id);
-  const SNAPSHOTS = ["V_MA", "EWA_EWC", "KO_PEP", "SPY_IVV", "XOM_CVX", "GS_MS"];
+  fillList("pair-list", "pairs");
   const DEFAULTS = { period: "5y", window: "30", entry: "2", exit: "0.5", stop: "3.5", cost: "5", hedge_window: "120", rolling: "1" };
 
   document.querySelectorAll(".presets button").forEach((b) => b.addEventListener("click", () => {
@@ -14,13 +14,16 @@
   if (qs.get("a") && qs.get("b")) { $("a").value = qs.get("a"); $("b").value = qs.get("b"); }
 
   async function run() {
-    const a = $("a").value.trim().toUpperCase(), b = $("b").value.trim().toUpperCase();
+    let a = $("a").value.trim().toUpperCase(), b = $("b").value.trim().toUpperCase();
+    // Daily results are computed once per pair, in alphabetical order
+    if (!(await hasApi()) && a > b) { [a, b] = [b, a]; $("a").value = a; $("b").value = b; }
     const q = new URLSearchParams({
       a, b, period: $("period").value, window: $("window").value, entry: $("entry").value, exit: $("exit").value,
       stop: $("stop").value, cost: $("cost").value, hedge_window: $("hedge").value, rolling: $("rolling").value,
     });
     const isDefault = Object.entries(DEFAULTS).every(([k, v]) => parseFloat(q.get(k)) === parseFloat(v) || q.get(k) === v);
-    const snap = isDefault && SNAPSHOTS.includes(`${a}_${b}`) ? `pairs_${a}_${b}` : null;
+    const u = await universe();
+    const snap = isDefault && u && a !== b && u.pairs.includes(a) && u.pairs.includes(b) ? `pairs_${snapName(a, b)}` : null;
 
     $("results").classList.add("loading"); $("run").disabled = true; $("error").classList.remove("show");
     try {

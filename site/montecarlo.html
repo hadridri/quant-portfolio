@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Monte Carlo VaR — Hadrien Bonhomme</title>
-  <meta name="description" content="Monte Carlo portfolio Value at Risk and Expected Shortfall with Cholesky-correlated simulations and correlation stress testing.">
+  <meta name="description" content="Monte Carlo simulation of a portfolio: Value at Risk, Expected Shortfall and correlation stress test.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -26,36 +26,32 @@
 
   <header class="page-head">
     <div class="wrap">
-      <span class="eyebrow">Project 01 · Risk</span>
-      <h1>How much can this portfolio lose in a <em>bad month?</em></h1>
-      <p class="lede">The model estimates each asset's drift, volatility and correlations from daily yfinance data. It simulates thousands of correlated one-month futures, using a Cholesky factor of the correlation matrix, and reads off Value at Risk and Expected Shortfall. A stress test then pushes correlations toward one, the scenario in which diversification fails.</p>
+      <span class="eyebrow">Project 01</span>
+      <h1>Monte Carlo <em>VaR</em></h1>
+      <p class="lede">How much can a portfolio lose in one month? 10,000 simulated scenarios, based on each stock's volatility and on their correlations.</p>
     </div>
   </header>
 
   <main class="wrap layout">
     <aside class="controls">
-      <h4>Portfolio inputs</h4>
+      <h4>Portfolio</h4>
       <form id="form">
-        <div class="field"><label for="tickers">Tickers (comma separated)</label><input id="tickers" value="AAPL,MSFT,JPM,XOM,JNJ" autocomplete="off" spellcheck="false"></div>
-        <div class="presets">
-          <button type="button" data-t="AAPL,MSFT,JPM,XOM,JNJ">Diversified US</button>
-          <button type="button" data-t="NVDA,AMD,AVGO,TSM">Semis</button>
-          <button type="button" data-t="SPY,TLT,GLD">60/40 + gold</button>
-          <button type="button" data-t="MC.PA,OR.PA,TTE.PA,SAN.PA,AIR.PA">CAC 40</button>
-        </div>
-        <div class="field"><label for="weights">Weights (blank = equal)</label><input id="weights" placeholder="e.g. 30,20,20,15,15" autocomplete="off"></div>
-        <div class="row2">
+        <p class="hint">Choose a portfolio.</p>
+        <div class="presets" id="presets"></div>
+        <div class="field live-only"><label for="tickers">Tickers</label><input id="tickers" value="AAPL,MSFT,JPM,XOM,JNJ" autocomplete="off" spellcheck="false"></div>
+        <div class="field live-only"><label for="weights">Weights (blank = equal)</label><input id="weights" placeholder="30,20,20,15,15" autocomplete="off"></div>
+        <div class="row2 live-only">
           <div class="field"><label for="period">History</label>
             <select id="period"><option>2y</option><option selected>3y</option><option>5y</option><option>10y</option></select></div>
           <div class="field"><label for="horizon">Horizon (days)</label><input id="horizon" type="number" value="21" min="1" max="252"></div>
         </div>
-        <div class="field"><label for="alpha">Confidence <output id="alpha-out">95%</output></label><input id="alpha" type="range" min="0.90" max="0.99" step="0.01" value="0.95"></div>
-        <div class="row2">
+        <div class="field live-only"><label for="alpha">Confidence <output id="alpha-out">95%</output></label><input id="alpha" type="range" min="0.90" max="0.99" step="0.01" value="0.95"></div>
+        <div class="row2 live-only">
           <div class="field"><label for="sims">Simulations</label>
             <select id="sims"><option value="5000">5,000</option><option value="10000" selected>10,000</option><option value="25000">25,000</option><option value="50000">50,000</option></select></div>
-          <div class="field"><label for="notional">Notional $</label><input id="notional" type="number" value="1000000" min="1"></div>
+          <div class="field"><label for="notional">Amount $</label><input id="notional" type="number" value="1000000" min="1"></div>
         </div>
-        <button class="btn primary" id="run" type="submit">Run simulation <span class="arr">→</span></button>
+        <button class="btn primary live-only" id="run" type="submit">Run <span class="arr">→</span></button>
       </form>
       <div class="error" id="error"></div>
       <div class="mode" id="mode"></div>
@@ -70,40 +66,45 @@
       </div>
 
       <div class="card">
-        <div class="card-head"><h3>Simulated portfolio value</h3><p class="note">Percentile bands and 120 sample paths</p></div>
+        <div class="card-head"><h3>Simulated portfolio value</h3></div>
         <div id="c-fan" class="chart tall"></div>
+        <p class="read"><b>How to read:</b> each grey line is one possible month. The purple bands contain most outcomes; the red dotted line is the bad-case scenario used for the VaR.</p>
       </div>
 
       <div class="grid2">
         <div class="card">
-          <div class="card-head"><h3>Return distribution</h3><p class="note">Tail beyond VaR in red</p></div>
+          <div class="card-head"><h3>Return distribution</h3></div>
           <div id="c-dist" class="chart"></div>
+          <p class="read"><b>How to read:</b> the red bars are the worst 5% of months. VaR is where they start, ES is their average.</p>
         </div>
         <div class="card">
-          <div class="card-head"><h3>Correlation matrix</h3><p class="note">Daily log-returns</p></div>
+          <div class="card-head"><h3>Correlation matrix</h3></div>
           <div id="c-corr" class="chart"></div>
+          <p class="read"><b>How to read:</b> close to 1 = the two stocks move together (little diversification). Close to 0 = independent.</p>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-head"><h3>When correlations rise, diversification fails</h3><p class="note">Uniform pairwise ρ, same random draws</p></div>
+        <div class="card-head"><h3>VaR when correlations rise</h3></div>
         <div id="c-sens" class="chart"></div>
-        <p class="note" id="sens-text" style="margin-top:8px"></p>
+        <p class="read" id="sens-text"></p>
       </div>
 
       <div class="grid2">
         <div class="card">
-          <div class="card-head"><h3>Three ways to measure VaR</h3></div>
+          <div class="card-head"><h3>Three ways to compute VaR</h3></div>
           <div id="c-methods" class="chart short"></div>
+          <p class="read"><b>How to read:</b> if historical VaR is higher than the others, real markets had fatter tails than the model assumes.</p>
         </div>
         <div class="card">
-          <div class="card-head"><h3>Crisis stress test</h3><p class="note">C′ = (1−λ)·C + λ·J</p></div>
+          <div class="card-head"><h3>Crisis stress test</h3></div>
           <div class="table-scroll"><table class="data" id="stress"></table></div>
+          <p class="read"><b>How to read:</b> λ = 1 means every stock moves together, as in a crash.</p>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-head"><h3>Inputs estimated from history</h3><p class="note" id="sample"></p></div>
+        <div class="card-head"><h3>Inputs from history</h3><p class="note" id="sample"></p></div>
         <div class="table-scroll"><table class="data" id="assets"></table></div>
       </div>
 
@@ -111,33 +112,27 @@
         <div class="card-head"><h3>Price history, base 100</h3></div>
         <div id="c-hist" class="chart"></div>
       </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Summary</h3></div>
+        <p class="read" id="takeaway" style="border:0;padding:0;margin:0">—</p>
+      </div>
     </section>
   </main>
 
   <section class="method">
     <div class="wrap">
-      <span class="eyebrow">Methodology</span>
-      <div class="steps" style="margin-top:28px">
-        <div class="step"><div class="num">01</div><h4>Pull the data</h4><p><code>yfinance</code> adjusted closes, at least two years, then daily log-returns.</p></div>
-        <div class="step"><div class="num">02</div><h4>Estimate</h4><p>Mean μ, volatility σ and correlation matrix C for each asset. These are the only inputs.</p></div>
-        <div class="step"><div class="num">03</div><h4>Simulate</h4><p><code>L = cholesky(C)</code>, <code>ε = Z·Lᵀ</code>. Without L, simulated assets are independent and portfolio risk is badly understated.</p></div>
-        <div class="step"><div class="num">04</div><h4>VaR &amp; ES</h4><p>Sort the outcomes. VaR is the loss at the 5th percentile, and ES is the average loss beyond it, which captures how bad the tail gets.</p></div>
-        <div class="step"><div class="num">05</div><h4>Stress correlation</h4><p>Re-run with ρ forced from −0.2 to 0.95 using common random numbers, so only the correlation changes.</p></div>
-      </div>
-      <div class="prose">
-        <h3>What I take from it</h3>
-        <p id="takeaway">—</p>
-        <ul>
-          <li><strong>VaR is not a worst case.</strong> It is a threshold that will be breached, by design, one month in twenty. ES is the figure to size capital against.</li>
-          <li><strong>The normal assumption understates fat tails.</strong> When historical VaR exceeds the Monte Carlo figure, the data has fatter tails than the GBM model assumes.</li>
-          <li><strong>Correlation is the hidden lever.</strong> In 2008 and March 2020, cross-asset correlations jumped. The stress table shows the cost of that jump in dollars.</li>
-        </ul>
-        <p>Code: <code>quant/montecarlo.py</code>. Press F5 in Spyder to print the full risk report.</p>
+      <span class="eyebrow">Key terms</span>
+      <div class="steps" style="margin-top:24px">
+        <div class="step"><h4>Monte Carlo</h4><p>Simulate thousands of random futures with the same volatility and correlations as the real stocks, then look at the results.</p></div>
+        <div class="step"><h4>VaR 95%</h4><p>The loss you should not exceed in 95% of months. One month in twenty is worse.</p></div>
+        <div class="step"><h4>Expected shortfall</h4><p>The average loss in that worst 5%. It shows how bad a bad month really gets.</p></div>
+        <div class="step"><h4>Correlation</h4><p>When stocks fall together, diversification stops working and the risk rises.</p></div>
       </div>
     </div>
   </section>
 
-  <footer><div class="wrap"><a href="index.html">← Back to portfolio</a><span>Educational project · not investment advice</span></div></footer>
+  <footer><div class="wrap"><a href="index.html">← Back</a><span>Educational project, not investment advice</span></div></footer>
 
   <script src="assets/app.js"></script>
   <script src="assets/montecarlo.js"></script>

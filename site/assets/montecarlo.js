@@ -1,8 +1,12 @@
 (() => {
-  const { fmt, load, setMode, colors: C, plot } = Q;
+  const { fmt, load, setMode, colors: C, plot, universe, snapName } = Q;
   const $ = (id) => document.getElementById(id);
-  const DEFAULT = "AAPL,MSFT,JPM,XOM,JNJ";
+  const PRESETS = {
+    "Diversified US": "AAPL,MSFT,JPM,XOM,JNJ", "Semiconductors": "NVDA,AMD,AVGO,TSM",
+    "60/40 + gold": "SPY,TLT,GLD", "CAC 40": "MC.PA,OR.PA,TTE.PA,SAN.PA,AIR.PA",
+  };
 
+  $("presets").innerHTML = Object.entries(PRESETS).map(([k, v]) => `<button type="button" data-t="${v}">${k}</button>`).join("");
   $("alpha").addEventListener("input", (e) => ($("alpha-out").textContent = `${Math.round(e.target.value * 100)}%`));
   document.querySelectorAll(".presets button").forEach((b) => b.addEventListener("click", () => {
     $("tickers").value = b.dataset.t; $("weights").value = ""; run();
@@ -11,16 +15,20 @@
 
   async function run() {
     const q = new URLSearchParams({
-      tickers: $("tickers").value.replace(/\s/g, ""), period: $("period").value, horizon: $("horizon").value,
+      tickers: $("tickers").value.replace(/\s/g, "").toUpperCase(), period: $("period").value, horizon: $("horizon").value,
       alpha: $("alpha").value, sims: $("sims").value, notional: $("notional").value,
     });
     if ($("weights").value.trim()) q.set("weights", $("weights").value.replace(/\s/g, ""));
-    const isDefault = q.get("tickers").toUpperCase() === DEFAULT && !q.has("weights") && q.get("period") === "3y"
-      && q.get("horizon") === "21" && q.get("alpha") === "0.95" && q.get("sims") === "10000" && q.get("notional") === "1000000";
+    const isDefault = !q.has("weights") && q.get("period") === "3y" && q.get("horizon") === "21"
+      && q.get("alpha") === "0.95" && q.get("sims") === "10000" && q.get("notional") === "1000000";
+    const u = await universe();
+    const precomputed = u && Object.values(u.mc).some((t) => t.join(",") === q.get("tickers"));
+    document.querySelectorAll(".presets button").forEach((b) => b.classList.toggle("active", b.dataset.t === q.get("tickers")));
 
     $("results").classList.add("loading"); $("run").disabled = true; $("error").classList.remove("show");
     try {
-      const { data, mode } = await load(`/api/montecarlo?${q}`, isDefault ? "montecarlo" : null);
+      const snap = isDefault && precomputed ? `mc_${snapName(...q.get("tickers").split(","))}` : null;
+      const { data, mode } = await load(`/api/montecarlo?${q}`, snap);
       setMode($("mode"), mode, `· ${data.params.end}`);
       render(data);
     } catch (err) {
@@ -80,7 +88,7 @@
       { x: [cur.rho], y: [cur.var * N], mode: "markers+text", marker: { size: 11, color: C.ink }, text: ["today"], textposition: "top left", name: "Current avg ρ", hoverinfo: "skip" },
     ], { xaxis: { title: { text: "Pairwise correlation ρ" } }, yaxis: { tickprefix: "$", tickformat: ",.0f" }, margin: { l: 80 } });
     const hi = s[s.length - 1];
-    $("sens-text").textContent = `Moving from today's average ρ of ${fmt.num(cur.rho)} to ${fmt.num(hi.rho)} raises VaR from ${fmt.money(cur.var * N)} to ${fmt.money(hi.var * N)} (×${fmt.num(hi.var / cur.var, 1)}), with the same assets and volatilities.`;
+    $("sens-text").innerHTML = `<b>How to read:</b> same stocks, same volatility, only the correlation changes. If all stocks moved together (ρ = ${fmt.num(hi.rho)}), VaR would go from ${fmt.money(cur.var * N)} to ${fmt.money(hi.var * N)}.`;
 
     // Methods
     plot("c-methods", [
@@ -104,10 +112,9 @@
       { yaxis: { title: { text: "Base 100" } } });
 
     const fat = r.hist_var > r.mc_var;
-    $("takeaway").textContent = `Over ${p.horizon} trading days, this ${t.length}-asset portfolio has a ${100 - conf}% chance of losing more than ${fmt.money(r.mc_var_cash)} on ${fmt.money(N)}, and in that tail the average loss is ${fmt.money(r.mc_es_cash)}. `
-      + `Diversification cuts volatility by a factor of ${fmt.num(r.diversification_ratio)} compared with holding the assets in isolation, but that benefit depends on correlations staying where they are. `
-      + (fat ? `Historical VaR (${fmt.pct(r.hist_var)}) is above the Gaussian Monte Carlo figure, so the real data has fatter tails than the model assumes.`
-             : `Historical VaR (${fmt.pct(r.hist_var)}) is below the Monte Carlo figure over this sample, so the model is conservative here. A calm sample period can make it look more prudent than it really is.`);
+    $("takeaway").textContent = `In ${fmt.pct(1 - p.alpha, 0)} of months, this portfolio loses more than ${fmt.money(r.mc_var_cash)} out of ${fmt.money(N)}. `
+      + `When that happens, the average loss is ${fmt.money(r.mc_es_cash)}. `
+      + (fat ? "Historical VaR is higher than the model's: real markets had fatter tails." : "Historical VaR is lower than the model's over this period.");
   }
 
   const vline = (x, color) => ({ type: "line", x0: x, x1: x, yref: "paper", y0: 0, y1: 1, line: { color, width: 1.5, dash: "dash" } });

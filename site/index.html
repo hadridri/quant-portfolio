@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Hadrien Bonhomme — Quant Portfolio</title>
-  <meta name="description" content="Risk-first quantitative research: Monte Carlo VaR, statistical arbitrage and trend-following backtests, built in Python on live market data.">
+  <title>Hadrien Bonhomme — Portfolio Risk Simulator</title>
+  <meta name="description" content="Portfolio risk simulator built in Python: Monte Carlo VaR, pairs trading and SMA 50/200 crossover.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -16,9 +16,7 @@
     <div class="wrap">
       <a class="brand" href="index.html"><span class="brand-mark">HB</span>Hadrien Bonhomme</a>
       <div class="nav-links">
-        <a href="#approach">Approach</a>
         <a href="#projects" class="keep">Projects</a>
-        <a href="#stack">Stack</a>
         <a href="#contact" class="keep">Contact</a>
       </div>
     </div>
@@ -27,74 +25,44 @@
   <header class="hero">
     <canvas id="hero-canvas" aria-hidden="true"></canvas>
     <div class="hero-legend">
-      <div class="mono">Monte Carlo · correlated GBM</div>
+      <div class="mono">Monte Carlo simulation</div>
       <div class="mono"><b id="hero-paths">—</b></div>
       <div class="mono"><span class="down">■</span> worst 5% of outcomes</div>
     </div>
     <div class="wrap">
-      <span class="eyebrow reveal">MSc Finance · NEOMA Business School · Portfolio & Risk</span>
-      <h1 class="reveal d1">Return is a guess. <em>Risk</em> is a decision.</h1>
-      <p class="hero-sub reveal d2">I'm Hadrien Bonhomme, an aspiring portfolio manager. I build and test quant strategies in Python on live market data and look hard at what can go wrong: tail risk, broken correlations and backtests that flatter themselves.</p>
+      <span class="eyebrow reveal">Personal project · Python</span>
+      <h1 class="reveal d1">Portfolio <em>risk</em> simulator</h1>
+      <p class="hero-sub reveal d2">A portfolio simulator to measure and manage risk, built in Python with market data from Yahoo Finance.</p>
       <div class="hero-meta reveal d3">
-        <a class="btn primary" href="#projects">See the research <span class="arr">→</span></a>
-        <a class="btn" href="https://github.com/hadridri/quant-portfolio" target="_blank" rel="noopener" id="github-link">Source code on GitHub</a>
+        <a class="btn primary" href="#projects">See the projects <span class="arr">→</span></a>
+        <a class="btn" href="https://github.com/hadridri/quant-portfolio" target="_blank" rel="noopener">Code on GitHub</a>
       </div>
     </div>
   </header>
 
   <div class="tape" aria-hidden="true"><div class="tape-track" id="tape"></div></div>
 
-  <section class="block" id="approach">
+  <section class="block" id="projects">
     <div class="wrap">
       <div class="section-head">
         <div>
-          <span class="eyebrow reveal">Approach</span>
-          <h2 class="reveal d1">Three questions I ask <em>before</em> any trade.</h2>
+          <span class="eyebrow reveal">Projects</span>
+          <h2 class="reveal d1">Three risk models</h2>
         </div>
-        <p class="reveal d2">Every project below is built around a classic way strategies fail. Each one is a working Python model, pulls data from Yahoo Finance and runs in your browser. Change the inputs and the analysis re-computes.</p>
-      </div>
-      <div class="principles">
-        <div class="principle reveal">
-          <div class="num">01 / CORRELATION</div>
-          <h3>What do I lose in a bad month?</h3>
-          <p>Diversification works until correlations rise toward one. Then VaR grows faster than intuition expects, because the hedge disappears just when you need it.</p>
-        </div>
-        <div class="principle reveal d1">
-          <div class="num">02 / STATIONARITY</div>
-          <h3>Is the relationship real, and does it last?</h3>
-          <p>Two charts that look alike are not a trade. I need a cointegration test, a half-life I can afford and a stop-loss for the day the relationship breaks.</p>
-        </div>
-        <div class="principle reveal d2">
-          <div class="num">03 / HONEST TESTING</div>
-          <h3>Would this have made money, for real?</h3>
-          <p>Execution delays, fees and slippage reduce returns. A strategy has to beat buy &amp; hold after costs, without look-ahead bias, or it has no reason to exist.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="block" id="projects" style="padding-top:0">
-    <div class="wrap">
-      <div class="section-head">
-        <div>
-          <span class="eyebrow reveal">Research</span>
-          <h2 class="reveal d1">Three projects, <em>live</em> on market data.</h2>
-        </div>
-        <p class="reveal d2">Figures below come from the latest data run. Open a project to change the tickers, parameters and costs.</p>
       </div>
 
       <div class="projects">
         <a class="project reveal" href="montecarlo.html">
           <div class="idx">01</div>
           <div>
-            <span class="eyebrow">Risk · Monte Carlo</span>
-            <h3>Portfolio VaR &amp; Expected Shortfall</h3>
-            <p>10,000 correlated scenarios via Cholesky decomposition, compared with parametric and historical VaR, plus a stress test of correlation.</p>
+            <span class="eyebrow">Monte Carlo · VaR</span>
+            <h3>Value at Risk</h3>
+            <p>Simulates 10,000 possible months for a portfolio to estimate how much it could lose.</p>
           </div>
           <div class="kpis">
             <div class="kpi"><div class="label">1-month VaR 95%</div><div class="value down" id="k-var">—</div></div>
             <div class="kpi"><div class="label">Expected shortfall</div><div class="value down" id="k-es">—</div></div>
-            <div class="kpi"><div class="label">VaR at ρ = 0.9</div><div class="value warn" id="k-var9">—</div></div>
+            <div class="kpi"><div class="label">VaR if ρ = 0.9</div><div class="value warn" id="k-var9">—</div></div>
             <div class="kpi"><div class="label">Diversif. ratio</div><div class="value" id="k-dr">—</div></div>
           </div>
           <div class="go">→</div>
@@ -103,9 +71,9 @@
         <a class="project reveal d1" href="pairs.html">
           <div class="idx">02</div>
           <div>
-            <span class="eyebrow">Stat Arb · Mean reversion</span>
-            <h3>Pairs trading lab</h3>
-            <p>Enter any two tickers. Engle-Granger cointegration, a rolling hedge ratio with no look-ahead, z-score signals with a stop-loss, and an Ornstein-Uhlenbeck half-life.</p>
+            <span class="eyebrow">Statistical arbitrage</span>
+            <h3>Pairs trading</h3>
+            <p>Tests whether two stocks move together and backtests a mean-reversion strategy on them.</p>
           </div>
           <div class="kpis">
             <div class="kpi"><div class="label" id="k-pair">Coint. p-value</div><div class="value" id="k-p">—</div></div>
@@ -119,12 +87,12 @@
         <a class="project reveal d2" href="sma.html">
           <div class="idx">03</div>
           <div>
-            <span class="eyebrow">Trend · Backtest + alerts</span>
-            <h3>SMA 50/200 crossover</h3>
-            <p>Next-open execution, costs on every trade, comparison with buy &amp; hold, and a measure of look-ahead bias. A daily job e-mails me on every golden or death cross.</p>
+            <span class="eyebrow">Trend following · Alerts</span>
+            <h3>Golden cross</h3>
+            <p>Backtests the SMA 50/200 crossover against buy &amp; hold, with an e-mail alert on each new cross.</p>
           </div>
           <div class="kpis">
-            <div class="kpi"><div class="label">SPY regime</div><div class="value" id="k-reg">—</div></div>
+            <div class="kpi"><div class="label">SPY today</div><div class="value" id="k-reg">—</div></div>
             <div class="kpi"><div class="label">Max DD vs B&amp;H</div><div class="value" id="k-dd">—</div></div>
             <div class="kpi"><div class="label">CAGR strategy</div><div class="value" id="k-cagr">—</div></div>
             <div class="kpi"><div class="label">CAGR buy &amp; hold</div><div class="value" id="k-bh">—</div></div>
@@ -135,40 +103,26 @@
     </div>
   </section>
 
-  <section class="block" id="stack" style="padding-top:0">
-    <div class="wrap">
-      <div class="section-head">
-        <div>
-          <span class="eyebrow reveal">Stack</span>
-          <h2 class="reveal d1">Built end to end, <em>on my own</em>.</h2>
-        </div>
-        <p class="reveal d2">Research in Python with Spyder, a Flask API serving the models live, a static fallback on GitHub Pages, and GitHub Actions running the daily alert and data refresh.</p>
-      </div>
-      <div class="stack reveal">
-        <span class="chip">Python 3</span><span class="chip">pandas</span><span class="chip">NumPy</span><span class="chip">SciPy</span>
-        <span class="chip">statsmodels</span><span class="chip">yfinance</span><span class="chip">Flask</span><span class="chip">Plotly.js</span>
-        <span class="chip">GitHub Actions</span><span class="chip">SMTP · ntfy push</span><span class="chip">Spyder</span>
-        <span class="chip">Cholesky · Monte Carlo</span><span class="chip">Engle-Granger · ADF · OU</span><span class="chip">Walk-forward thinking</span>
-      </div>
-    </div>
-  </section>
-
   <section class="contact" id="contact">
     <div class="wrap">
       <span class="eyebrow reveal">Contact</span>
-      <h2 class="reveal d1">Let's talk <em style="color:var(--accent-2)">risk</em>.</h2>
+      <h2 class="reveal d1">Hadrien Bonhomme</h2>
       <div class="row reveal d2">
-        <a class="btn primary" href="mailto:h.bonhomme@hotmail.com">E-mail me <span class="arr">→</span></a>
+        <a class="btn primary" href="mailto:h.bonhomme@hotmail.com">E-mail <span class="arr">→</span></a>
         <a class="btn" href="https://www.linkedin.com/in/hadrien-bonhomme" target="_blank" rel="noopener">LinkedIn</a>
         <a class="btn" href="https://github.com/hadridri" target="_blank" rel="noopener">GitHub</a>
+      </div>
+      <div class="stack reveal d3" style="justify-content:center;margin-top:40px">
+        <span class="chip">Python</span><span class="chip">pandas</span><span class="chip">NumPy</span><span class="chip">SciPy</span>
+        <span class="chip">statsmodels</span><span class="chip">yfinance</span><span class="chip">Flask</span><span class="chip">GitHub Actions</span>
       </div>
     </div>
   </section>
 
   <footer>
     <div class="wrap">
-      <span>© <span id="year"></span> Hadrien Bonhomme · Quant research portfolio</span>
-      <span>Educational project · not investment advice</span>
+      <span>© <span id="year"></span> Hadrien Bonhomme</span>
+      <span>Educational project, not investment advice</span>
     </div>
   </footer>
 
@@ -180,7 +134,7 @@
     const set = (id, txt, cls) => { const el = document.getElementById(id); el.textContent = txt; if (cls) el.className = `value ${cls}`; };
     const json = (n) => fetch(`data/${n}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
 
-    Promise.all([json("montecarlo"), json("pairs_V_MA"), json("sma_SPY"), json("sma_QQQ"), json("sma_AAPL"), json("sma_GLD")])
+    Promise.all([json("mc_AAPL_MSFT_JPM_XOM_JNJ"), json("pairs_MA_V"), json("sma_SPY"), json("sma_QQQ"), json("sma_AAPL"), json("sma_GLD")])
       .then(([mc, pr, spy, ...others]) => {
         if (mc) {
           set("k-var", fmt.pct(mc.risk.mc_var, 1)); set("k-es", fmt.pct(mc.risk.mc_es, 1));
@@ -198,7 +152,6 @@
           set("k-dd", `${fmt.pct(spy.strategy.max_drawdown, 0)} / ${fmt.pct(spy.buy_hold.max_drawdown, 0)}`);
           set("k-cagr", fmt.pct(spy.strategy.cagr, 1)); set("k-bh", fmt.pct(spy.buy_hold.cagr, 1));
         }
-        // Ticker tape from the latest snapshots
         const items = [];
         [spy, ...others].filter(Boolean).forEach((d) => {
           const s = d.status;
@@ -207,7 +160,6 @@
         });
         if (mc) mc.assets.forEach((a) => items.push(`<div class="tape-item"><span>${a.ticker}</span>
             <span>σ ${fmt.pct(a.ann_vol, 1)}</span><span class="${fmt.sign(a.ann_return)}">μ ${fmt.spct(a.ann_return, 1)}</span></div>`));
-        if (pr) items.push(`<div class="tape-item"><span>${pr.params.a}/${pr.params.b}</span><span>z ${fmt.num(pr.tests.z_latest, 2)}</span><span>β ${fmt.num(pr.tests.beta_latest, 2)}</span></div>`);
         if (items.length) document.getElementById("tape").innerHTML = items.join("") + items.join("");
       });
   </script>

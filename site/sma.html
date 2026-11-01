@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SMA Crossover Backtest — Hadrien Bonhomme</title>
-  <meta name="description" content="SMA 50/200 golden and death cross backtest with next-day execution, transaction costs, buy-and-hold benchmark and e-mail alerts.">
+  <title>Golden Cross — Hadrien Bonhomme</title>
+  <meta name="description" content="SMA 50/200 golden cross backtest against buy and hold, with daily e-mail alerts.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -26,33 +26,34 @@
 
   <header class="page-head">
     <div class="wrap">
-      <span class="eyebrow">Project 03 · Trend following</span>
-      <h1>The simplest strategy, <em>tested honestly.</em></h1>
-      <p class="lede">The rule: go long when the 50-day average crosses above the 200-day (golden cross) and go flat on a death cross. What matters is the test. The signal is executed the next session, every trade pays fees and slippage, and the result is compared with simply holding the asset. A daily GitHub Actions job also e-mails me whenever a cross happens on my watchlist.</p>
+      <span class="eyebrow">Project 03</span>
+      <h1>Golden <em>cross</em></h1>
+      <p class="lede">Buy when the 50-day average crosses above the 200-day average, sell when it crosses back below. Compared with simply holding the stock, after trading costs.</p>
     </div>
   </header>
 
   <main class="wrap layout">
     <aside class="controls">
-      <h4>Backtest settings</h4>
+      <h4>Stock</h4>
       <form id="form">
-        <div class="field"><label for="ticker">Ticker</label><input id="ticker" value="SPY" autocomplete="off" spellcheck="false"></div>
+        <div class="field"><label for="ticker">Ticker</label><input id="ticker" value="SPY" list="sma-list" autocomplete="off" spellcheck="false"></div>
+        <datalist id="sma-list"></datalist>
         <div class="presets">
           <button type="button" data-t="SPY">SPY</button><button type="button" data-t="QQQ">QQQ</button>
           <button type="button" data-t="AAPL">AAPL</button><button type="button" data-t="GLD">GLD</button>
           <button type="button" data-t="^FCHI">CAC 40</button><button type="button" data-t="BTC-USD">BTC</button>
         </div>
-        <div class="row2">
+        <div class="row2 live-only">
           <div class="field"><label for="fast">Fast SMA</label><input id="fast" type="number" value="50" min="2"></div>
           <div class="field"><label for="slow">Slow SMA</label><input id="slow" type="number" value="200" min="3"></div>
         </div>
-        <div class="row2">
+        <div class="row2 live-only">
           <div class="field"><label for="years">Years</label><input id="years" type="number" value="20" min="2" max="40"></div>
           <div class="field"><label for="cost">Cost bps</label><input id="cost" type="number" value="10" min="0" step="1"></div>
         </div>
-        <div class="field"><label for="execution">Execution</label>
+        <div class="field live-only"><label for="execution">Execution</label>
           <select id="execution"><option value="next_open" selected>Next day open</option><option value="next_close">Next day close</option></select></div>
-        <button class="btn primary" id="run" type="submit">Run backtest <span class="arr">→</span></button>
+        <button class="btn primary" id="run" type="submit">Backtest <span class="arr">→</span></button>
       </form>
       <div class="error" id="error"></div>
       <div class="mode" id="mode"></div>
@@ -62,7 +63,7 @@
       <div class="status-banner" id="status">
         <div class="pulse" id="s-pulse"></div>
         <div>
-          <div class="eyebrow" id="s-eyebrow">Current regime</div>
+          <div class="eyebrow" id="s-eyebrow">Today</div>
           <div class="big" id="s-regime">—</div>
           <div class="note" id="s-detail" style="color:var(--ink-2);margin-top:6px">—</div>
         </div>
@@ -73,71 +74,60 @@
         <div class="tile"><div class="label">CAGR strategy</div><div class="value" id="t-cagr">—</div><div class="sub" id="t-bh">—</div></div>
         <div class="tile"><div class="label">Sharpe</div><div class="value" id="t-sh">—</div><div class="sub" id="t-bhsh">—</div></div>
         <div class="tile"><div class="label">Max drawdown</div><div class="value down" id="t-dd">—</div><div class="sub" id="t-bhdd">—</div></div>
-        <div class="tile"><div class="label">Exposure · trades</div><div class="value" id="t-exp">—</div><div class="sub" id="t-trades">—</div></div>
+        <div class="tile"><div class="label">Invested · trades</div><div class="value" id="t-exp">—</div><div class="sub" id="t-trades">—</div></div>
       </div>
 
       <div class="card">
-        <div class="card-head"><h3>Price, SMA 50 &amp; SMA 200</h3><p class="note">▲ golden cross · ▼ death cross</p></div>
+        <div class="card-head"><h3>Price, SMA 50 and SMA 200</h3></div>
         <div id="c-px" class="chart tall"></div>
+        <p class="read"><b>How to read:</b> ▲ golden cross (SMA 50 goes above SMA 200, buy signal). ▼ death cross (it goes below, sell signal).</p>
       </div>
 
       <div class="grid2">
         <div class="card">
-          <div class="card-head"><h3>Growth of $1 (log scale)</h3></div>
+          <div class="card-head"><h3>Growth of $1</h3></div>
           <div id="c-eq" class="chart"></div>
+          <p class="read"><b>How to read:</b> purple = strategy, grey = buy &amp; hold. Log scale.</p>
         </div>
         <div class="card">
-          <div class="card-head"><h3>Drawdown</h3><p class="note">The real case for trend following</p></div>
+          <div class="card-head"><h3>Drawdown</h3></div>
           <div id="c-dd" class="chart"></div>
+          <p class="read"><b>How to read:</b> the drop from the previous peak. The strategy goes to cash in long bear markets, so its falls are smaller.</p>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-head"><h3>How much do the shortcuts flatter the backtest?</h3></div>
+        <div class="card-head"><h3>Effect of costs and of the one-day delay</h3></div>
         <div class="table-scroll"><table class="data" id="comp"></table></div>
-        <p class="note" id="comp-text" style="margin-top:12px"></p>
+        <p class="read" id="comp-text"></p>
       </div>
 
       <div class="card">
-        <div class="card-head"><h3>Year by year: trending vs choppy markets</h3><p class="note">Bar = strategy minus buy &amp; hold</p></div>
+        <div class="card-head"><h3>Year by year vs buy &amp; hold</h3></div>
         <div id="c-year" class="chart"></div>
+        <p class="read"><b>How to read:</b> green = the strategy did better that year, red = worse. Faded bars are choppy years without a clear trend.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Summary</h3></div>
+        <p class="read" id="conclusion" style="border:0;padding:0;margin:0">—</p>
       </div>
     </section>
   </main>
 
-  <section class="method" id="alerts">
+  <section class="method">
     <div class="wrap">
-      <span class="eyebrow">Alerts</span>
-      <div class="section-head" style="margin-top:20px;margin-bottom:36px">
-        <h2 style="font:400 clamp(32px,4.5vw,56px)/1.05 var(--serif);margin:0">Get notified on every <em style="color:var(--accent-2)">golden or death cross</em>.</h2>
-        <p>Every weekday at 21:30 UTC, after the US close, a GitHub Actions job runs <code>quant/alert.py</code> on GitHub's servers, so it works even when the laptop is off. If SMA 50 crossed SMA 200 on the last session for any ticker on the watchlist, it sends an e-mail and a push notification to the phone.</p>
-      </div>
-      <div class="steps">
-        <div class="step"><div class="num">01</div><h4>Gmail App Password</h4><p>Google Account → Security → 2-Step Verification → <em>App passwords</em>. Create one called “SMA alerts” and copy the 16 characters.</p></div>
-        <div class="step"><div class="num">02</div><h4>GitHub secrets</h4><p>Repo → Settings → Secrets → Actions. Add <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code>, <code>ALERT_TO</code>, plus a variable <code>WATCHLIST</code> such as <code>SPY,QQQ,AAPL</code>.</p></div>
-        <div class="step"><div class="num">03</div><h4>Phone push (optional)</h4><p>Install the free <em>ntfy</em> app, subscribe to a random topic name, and add it as the <code>NTFY_TOPIC</code> secret.</p></div>
-        <div class="step"><div class="num">04</div><h4>Test it</h4><p>Actions → “SMA crossover alert” → Run workflow → mode <code>test</code>. A sample e-mail arrives within a minute.</p></div>
-      </div>
-      <div class="prose">
-        <h3>Or run it locally from Spyder / terminal</h3>
-<pre class="code">export SMTP_HOST=smtp.gmail.com SMTP_PORT=465
-export SMTP_USER=you@gmail.com SMTP_PASSWORD=xxxxxxxxxxxxxxxx
-export WATCHLIST=SPY,QQQ,AAPL NTFY_TOPIC=my-secret-topic
-python -m quant.alert --test      # send a test now
-python -m quant.alert             # daily check: notifies only on a new cross</pre>
-        <h3>Conclusions</h3>
-        <p id="conclusion">—</p>
-        <ul>
-          <li><strong>One-day delay:</strong> executing at the signal day's close uses information you did not have. The table shows how much it inflates the result.</li>
-          <li><strong>Costs:</strong> the 50/200 rule trades rarely, so costs barely matter here. Shorten the averages to 10/30 and watch them grow.</li>
-          <li><strong>Market regime:</strong> trend following loses in choppy years (whipsaws) and earns its keep in long bear markets such as 2008 and 2022, mostly by cutting drawdowns rather than adding return.</li>
-        </ul>
-        <p>Code: <code>quant/sma.py</code> and <code>quant/alert.py</code> · workflow: <code>.github/workflows/sma-alert.yml</code>.</p>
+      <span class="eyebrow">Key terms</span>
+      <div class="steps" style="margin-top:24px">
+        <div class="step"><h4>SMA</h4><p>Simple moving average: the average closing price over the last 50 or 200 days.</p></div>
+        <div class="step"><h4>Golden cross</h4><p>SMA 50 crosses above SMA 200: the trend turns up. Death cross is the opposite.</p></div>
+        <div class="step"><h4>Drawdown</h4><p>The loss from the highest point reached. Max drawdown is the worst one.</p></div>
+        <div class="step"><h4>E-mail alert</h4><p>Every weekday, a script checks SPY, QQQ, AAPL, MSFT, NVDA and GLD and sends an e-mail on each new cross.</p></div>
       </div>
     </div>
   </section>
 
-  <footer><div class="wrap"><a href="index.html">← Back to portfolio</a><span>Educational project · not investment advice</span></div></footer>
+  <footer><div class="wrap"><a href="index.html">← Back</a><span>Educational project, not investment advice</span></div></footer>
 
   <script src="assets/app.js"></script>
   <script src="assets/sma.js"></script>
