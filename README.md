@@ -1,4 +1,4 @@
-# Quant Research Portfolio — Hadrien
+# Quant Research Portfolio — Hadrien Bonhomme
 
 Three risk-first quant projects built end to end in Python, served as an interactive website.
 The models run **live on Yahoo Finance data** through a Flask API. A static snapshot of each
