@@ -58,6 +58,13 @@ img, svg, canvas { display: block; max-width: 100%; }
 @media (max-width: 720px) {
   .nav-links a:not(.keep) { display: none; }
 }
+.brand, .nav-links a { white-space: nowrap; }
+@media (max-width: 480px) {
+  .brand { font-size: 15px; gap: 8px; }
+  .nav-links { gap: 0; }
+  .nav-links a { padding: 8px 8px; font-size: 13px; }
+  .nav-links .n { display: none; }
+}
 
 /* ---------- Hero ---------- */
 .hero { position: relative; min-height: 100svh; display: flex; align-items: flex-end; padding: 120px 0 56px; overflow: hidden; }
