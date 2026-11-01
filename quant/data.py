@@ -33,12 +33,26 @@ def _download(tickers: list[str], period: str) -> pd.DataFrame:
     if path.exists() and time.time() - path.stat().st_mtime < CACHE_TTL:
         return pickle.loads(path.read_bytes())
 
-    raw = yf.download(tickers, period=period, auto_adjust=True,
-                      progress=False, group_by="column", threads=True)
+    # Sequential download with retries: yfinance's threaded mode can drop a
+    # ticker at random ("database is locked"), which would look like a bad symbol.
+    raw = None
+    for attempt in range(3):
+        raw = yf.download(tickers, period=period, auto_adjust=True,
+                          progress=False, group_by="column", threads=False)
+        if raw is not None and not raw.empty and not _missing(raw, tickers):
+            path.write_bytes(pickle.dumps(raw))
+            return raw
+        time.sleep(1 + attempt)
     if raw is None or raw.empty:
         raise DataError(f"No data returned by Yahoo Finance for {', '.join(tickers)}.")
-    path.write_bytes(pickle.dumps(raw))
-    return raw
+    return raw  # partial result, not cached; get_prices reports the missing ticker
+
+
+def _missing(raw: pd.DataFrame, tickers: list[str]) -> list[str]:
+    close = raw["Close"]
+    if isinstance(close, pd.Series):
+        return [] if close.notna().any() else tickers
+    return [t for t in tickers if t not in close.columns or close[t].isna().all()]
 
 
 def clean_tickers(tickers) -> list[str]:
