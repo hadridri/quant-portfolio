@@ -12,9 +12,11 @@ Pipeline
     5. Half-life of mean reversion from an Ornstein-Uhlenbeck / AR(1) fit,
        transaction costs on every leg, and a rolling cointegration check.
 
-Run in Spyder (F5) to backtest KO / PEP.
+Run in Spyder (F5) to backtest V / MA.
 """
 from __future__ import annotations
+
+from itertools import combinations
 
 import numpy as np
 import pandas as pd
@@ -194,8 +196,51 @@ def run(ticker_a: str = "KO", ticker_b: str = "PEP", period: str = "5y", window:
     return to_json_safe(result)
 
 
+def action(res: dict, amount: float = 10_000) -> dict:
+    """Turn a backtest result into plain instructions for today.
+
+    "Long the spread" means A is cheap relative to B: buy A, sell B.
+    "Short the spread" is the opposite. The hedge ratio sizes B: for $1 of A,
+    trade $beta of B. A negative beta means both legs go the same way.
+    """
+    p, t = res["params"], res["tests"]
+    a, b, z = p["a"], p["b"], t["z_latest"]
+    beta = t["beta_latest"] if t["beta_latest"] is not None else t["beta"]
+    legs_long = [("BUY", a, amount), ("SELL" if beta >= 0 else "BUY", b, abs(beta) * amount)]
+    legs_short = [("SELL", a, amount), ("BUY" if beta >= 0 else "SELL", b, abs(beta) * amount)]
+    linked = t["coint_p"] < 0.05
+    pos = t["position_latest"]
+
+    if pos == 1:
+        state, legs = "open", legs_long
+        text = f"{a} is cheap compared with {b}. Position stays open until z is back near 0 (now {z:.2f})."
+    elif pos == -1:
+        state, legs = "open", legs_short
+        text = f"{a} is expensive compared with {b}. Position stays open until z is back near 0 (now {z:.2f})."
+    else:
+        state, legs = "wait", []
+        text = (f"z = {z:.2f}, inside the ±{p['entry']:g} band: the gap is normal. "
+                f"Trade only if z goes below -{p['entry']:g} or above +{p['entry']:g}.")
+    return {"state": state, "linked": linked, "legs": legs, "text": text,
+            "if_low": legs_long, "if_high": legs_short}
+
+
+def scan_pairs(closes: pd.DataFrame) -> pd.DataFrame:
+    """Cointegration p-value and half-life of every pair in `closes`, best first."""
+    rows = []
+    logs = np.log(closes)
+    for a, b in combinations(closes.columns, 2):
+        pair = logs[[a, b]].dropna()
+        if len(pair) < 250:
+            continue
+        p_value = coint(pair[a], pair[b])[1]
+        beta = sm.OLS(pair[a], sm.add_constant(pair[b])).fit().params.iloc[1]
+        rows.append({"a": a, "b": b, "p_value": p_value, "half_life": half_life(pair[a] - beta * pair[b])})
+    return pd.DataFrame(rows).sort_values("p_value").reset_index(drop=True)
+
+
 if __name__ == "__main__":
-    res = run("KO", "PEP")
+    res = run("V", "MA")
     t, s = res["tests"], res["stats"]
     print(f"\n{res['params']['a']} / {res['params']['b']}  {res['params']['start']} -> {res['params']['end']}")
     print(f"Engle-Granger p-value : {t['coint_p']:.4f}   ADF on spread: {t['adf_p']:.4f}")

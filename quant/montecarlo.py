@@ -102,7 +102,7 @@ def run(tickers=None, weights=None, period: str = "3y", horizon: int = 21,
 
     # Sensitivity: uniform correlation rho, same random numbers
     avg_rho = corr[np.triu_indices(n, 1)].mean()
-    rho_grid = sorted(set(np.round(np.r_[np.linspace(-0.2, 0.95, 24), avg_rho], 4)))
+    rho_grid = sorted(set(np.round(np.r_[np.linspace(0, 0.95, 11), avg_rho], 4)))
     min_rho = -1 / (n - 1) + 1e-3
     sens = []
     for rho in rho_grid:
@@ -110,7 +110,7 @@ def run(tickers=None, weights=None, period: str = "3y", horizon: int = 21,
             continue
         c = np.full((n, n), rho)
         np.fill_diagonal(c, 1.0)
-        r_s, _ = simulate(mu, sigma, nearest_correlation(c), w, horizon, z)
+        r_s, _ = simulate(mu, sigma, nearest_correlation(c), w, horizon, z[:5000])
         v, e = var_es(r_s, alpha)
         sens.append({"rho": float(rho), "var": v, "es": e, "is_current": bool(np.isclose(rho, round(avg_rho, 4)))})
 

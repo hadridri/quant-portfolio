@@ -1,40 +1,70 @@
-# Daily SMA 50/200 cross check, runs on GitHub's servers (your Mac can be off).
-# Configure in: repo > Settings > Secrets and variables > Actions
-#   Secrets  : SMTP_USER, SMTP_PASSWORD (Gmail App Password), ALERT_TO, NTFY_TOPIC
-#   Variables: WATCHLIST (e.g. SPY,QQQ,AAPL), SMTP_HOST (default smtp.gmail.com), SMTP_PORT (465)
+# Golden / death cross e-mail alerts, run by GitHub so the laptop can stay off.
+# Every 15 minutes on market days. GitHub can start scheduled runs late.
+# Secrets: SMTP_USER, SMTP_PASSWORD (Gmail App Password), ALERT_TO.
+# Variables (optional): WATCHLIST (extra tickers), DAILY_DIGEST ("0" to disable the daily summary).
+# state.json and scan.json are kept on the alerts-data branch.
 name: SMA crossover alert
 
 on:
   schedule:
-    - cron: "30 21 * * 1-5"   # 21:30 UTC, Mon-Fri, after the US close
+    - cron: "7,22,37,52 7-21 * * 1-5"
   workflow_dispatch:
     inputs:
       mode:
-        description: "check | test | digest"
+        description: "check | test"
         default: "check"
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: sma-alert
 
 jobs:
   alert:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      WATCHLIST: ${{ vars.WATCHLIST }}
+      DAILY_DIGEST: ${{ vars.DAILY_DIGEST }}
+      SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
+      SMTP_PORT: ${{ vars.SMTP_PORT || '465' }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      ALERT_TO: ${{ secrets.ALERT_TO }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements.txt
-      - name: Check crosses and notify
-        env:
-          WATCHLIST: ${{ vars.WATCHLIST }}
-          SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
-          SMTP_PORT: ${{ vars.SMTP_PORT || '465' }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          ALERT_TO: ${{ secrets.ALERT_TO }}
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          cache-dependency-path: requirements-alert.txt
+      - run: pip install -r requirements-alert.txt
+
+      - name: Send a test alert
+        if: github.event.inputs.mode == 'test'
+        run: python -m quant.alert --test
+
+      - name: Load the previous state
+        if: github.event.inputs.mode != 'test'
+        run: git fetch --depth=1 origin alerts-data && git show FETCH_HEAD:state.json > state.json || rm -f state.json
+
+      - name: Check crosses
+        if: github.event.inputs.mode != 'test'
+        run: python -m quant.alert
+
+      - name: Publish state and scan
+        if: github.event.inputs.mode != 'test'
         run: |
-          case "${{ github.event.inputs.mode }}" in
-            test)   python -m quant.alert --test ;;
-            digest) python -m quant.alert --digest ;;
-            *)      python -m quant.alert ;;
-          esac
+          mkdir publish && cp state.json scan.json publish/ && cd publish
+          git init -q -b alerts-data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add . && git commit -qm "Alert data"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" alerts-data
+
+      # GitHub pauses schedules after 60 days without commits on the default branch
+      - name: Keep the schedule alive
+        run: gh workflow enable sma-alert.yml

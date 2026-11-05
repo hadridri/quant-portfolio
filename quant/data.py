@@ -1,7 +1,8 @@
 """Market data layer: yfinance download with a small on-disk cache.
 
-Yahoo throttles aggressive callers, so every download is cached for a few hours
-in ./cache. Delete the folder to force a refresh.
+Yahoo throttles aggressive callers, so every download is cached for 15 minutes
+in ./cache. clear_cache() forces a refresh. During market hours the last row is
+today's session so far, so the last "close" is the latest available price.
 """
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ import pandas as pd
 import yfinance as yf
 
 CACHE_DIR = Path(__file__).resolve().parent.parent / "cache"
-CACHE_TTL = 6 * 3600  # seconds
+CACHE_TTL = 15 * 60  # seconds
 
 
 class DataError(ValueError):
@@ -53,6 +54,27 @@ def _missing(raw: pd.DataFrame, tickers: list[str]) -> list[str]:
     if isinstance(close, pd.Series):
         return [] if close.notna().any() else tickers
     return [t for t in tickers if t not in close.columns or close[t].isna().all()]
+
+
+def clear_cache() -> None:
+    for f in CACHE_DIR.glob("*.pkl"):
+        f.unlink(missing_ok=True)
+
+
+def get_closes(tickers, period: str = "3y") -> pd.DataFrame:
+    """Close prices for a long ticker list. Unlike get_prices, bad tickers are
+    skipped and each column keeps its own calendar (rows may contain gaps)."""
+    tickers = clean_tickers(tickers)
+    close = yf.download(tickers, period=period, auto_adjust=True, progress=False,
+                        group_by="column", threads=True)["Close"]
+    close = close.reindex(columns=tickers)
+    missing = [t for t in tickers if close[t].isna().all()]
+    if missing:  # threaded mode drops tickers at random, retry those one at a time
+        retry = yf.download(missing, period=period, auto_adjust=True, progress=False,
+                            group_by="column", threads=False)["Close"]
+        if not retry.empty:
+            close = close.combine_first(retry.reindex(columns=missing))
+    return close.dropna(axis=1, how="all").reindex(columns=[t for t in tickers if t in close.columns])
 
 
 def clean_tickers(tickers) -> list[str]:
@@ -125,7 +147,7 @@ def dates(index) -> list[str]:
     return [d.strftime("%Y-%m-%d") for d in pd.DatetimeIndex(index)]
 
 
-def perf_stats(returns: pd.Series, periods: int = 252) -> dict:
+def perf_stats(returns: pd.Series, periods: int = 252, rf: float = 0.0) -> dict:
     """Standard performance block shared by the backtests."""
     r = returns.fillna(0.0)
     equity = (1 + r).cumprod()
@@ -133,7 +155,7 @@ def perf_stats(returns: pd.Series, periods: int = 252) -> dict:
     total = equity.iloc[-1] - 1
     cagr = equity.iloc[-1] ** (1 / years) - 1 if years > 0 and equity.iloc[-1] > 0 else np.nan
     vol = r.std() * np.sqrt(periods)
-    sharpe = r.mean() / r.std() * np.sqrt(periods) if r.std() > 0 else np.nan
+    sharpe = (r.mean() * periods - rf) / vol if r.std() > 0 else np.nan
     downside = r[r < 0].std() * np.sqrt(periods)
     sortino = r.mean() * periods / downside if downside > 0 else np.nan
     dd = equity / equity.cummax() - 1

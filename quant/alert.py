@@ -1,42 +1,47 @@
-"""SMA 50/200 golden / death cross notifier.
+"""Golden / death cross e-mail alerts.
 
-Checks every ticker of the watchlist after the US close and, when the 50-day
-SMA crossed the 200-day SMA on the latest session, sends:
-    - an e-mail (any SMTP server, e.g. Gmail with an App Password), and/or
-    - a push notification to your phone via ntfy.sh (free, no account).
+Runs on GitHub Actions every 15 minutes on market days. Each run scans every ticker of
+quant/universe.py (plus the WATCHLIST variable) using the latest price as today's
+provisional close, and sends an e-mail when SMA 50 has crossed SMA 200.
+
+state.json remembers which side each ticker was on, so a cross is reported once.
+One e-mail per ticker per day at most, even if the averages touch several times.
 
 Configuration (environment variables or GitHub Actions secrets):
-    WATCHLIST       "SPY,QQQ,AAPL"         tickers to monitor
-    SMTP_HOST       smtp.gmail.com
-    SMTP_PORT       465
-    SMTP_USER       you@gmail.com
-    SMTP_PASSWORD   16-character Gmail App Password (never your real password)
-    ALERT_TO        where to send the e-mail (defaults to SMTP_USER)
-    NTFY_TOPIC      a hard-to-guess topic name, subscribe to it in the ntfy app
+    SMTP_HOST, SMTP_PORT    smtp.gmail.com, 465
+    SMTP_USER               sender address
+    SMTP_PASSWORD           Gmail App Password (never your real password)
+    ALERT_TO                recipient (defaults to SMTP_USER)
+    WATCHLIST               extra tickers, comma separated
+    DAILY_DIGEST            "0" disables the end-of-day summary e-mail
 
 Usage
-    python -m quant.alert              # daily check, notifies only on a new cross
-    python -m quant.alert --test       # send a test notification now
-    python -m quant.alert --digest     # always send the current status table
-    python -m quant.alert --lookback 5 # treat crosses of the last 5 sessions as new
+    python -m quant.alert          # one check, writes state.json and scan.json
+    python -m quant.alert --test   # send a sample alert now
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import smtplib
 import ssl
-import sys
-import urllib.request
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
+from pathlib import Path
 
-from .sma import latest_cross
+from .data import get_closes
+from .sma import scan
+from .universe import NAMES, UNIVERSE
 
-DEFAULT_WATCHLIST = "SPY,QQQ,AAPL,MSFT,NVDA,GLD"
+DIGEST_HOUR_UTC = 21.25     # first run after the US close
+HISTORY_SIZE = 200
+FOOTER = "Based on the latest price, confirmed at the close. Educational project, not investment advice."
 
 
 def watchlist() -> list[str]:
-    return [t.strip().upper() for t in os.getenv("WATCHLIST", DEFAULT_WATCHLIST).split(",") if t.strip()]
+    extra = [t.strip().upper() for t in os.getenv("WATCHLIST", "").split(",") if t.strip()]
+    return list(dict.fromkeys(UNIVERSE + extra))
 
 
 def send_email(subject: str, text: str, html: str) -> bool:
@@ -60,81 +65,110 @@ def send_email(subject: str, text: str, html: str) -> bool:
             s.starttls(context=ctx)
             s.login(user, pwd)
             s.send_message(msg)
-    print(f"  e-mail sent to {msg['To']}")
+    print("  e-mail sent")
     return True
 
 
-def send_push(title: str, text: str, tags: str = "chart_with_upwards_trend") -> bool:
-    topic = os.getenv("NTFY_TOPIC")
-    if not topic:
-        print("  push skipped: NTFY_TOPIC not set")
-        return False
-    req = urllib.request.Request(f"https://ntfy.sh/{topic}", data=text.encode(),
-                                 headers={"Title": title, "Tags": tags, "Priority": "high"})
-    urllib.request.urlopen(req, timeout=20).read()
-    print(f"  push sent to ntfy topic '{topic}'")
-    return True
+def _describe(r: dict) -> str:
+    return (f"{r['ticker']} ({NAMES.get(r['ticker'], r['ticker'])}): price {r['price']:.2f}, "
+            f"SMA 50 {r['sma_fast']:.2f}, SMA 200 {r['sma_slow']:.2f}")
 
 
-def format_report(rows: list[dict], title: str) -> tuple[str, str]:
-    lines = [title, ""]
-    trs = []
+def _email_body(title: str, sections: list[tuple[str, list[dict]]]) -> tuple[str, str]:
+    text, html = [title, ""], [f"<div style='font-family:Arial,sans-serif'><h3>{title}</h3>"]
+    for heading, rows in sections:
+        if rows:
+            text += [heading] + [f"  {_describe(r)}" for r in rows] + [""]
+            html.append(f"<p><b>{heading}</b></p><ul>" + "".join(f"<li>{_describe(r)}</li>" for r in rows) + "</ul>")
+    text.append(FOOTER)
+    html.append(f"<p style='color:#666;font-size:12px'>{FOOTER}</p></div>")
+    return "\n".join(text), "".join(html)
+
+
+def send_cross_alert(golden: list[dict], death: list[dict], prefix: str = "") -> bool:
+    names = ", ".join(r["ticker"] for r in golden + death)
+    kind = "Golden cross" if golden and not death else "Death cross" if death and not golden else "SMA cross"
+    title = f"{prefix}{kind}: {names}"
+    return send_email(title, *_email_body(title, [
+        ("Golden cross (SMA 50 moved above SMA 200):", golden),
+        ("Death cross (SMA 50 moved below SMA 200):", death),
+    ]))
+
+
+def check(state: dict, rows: list[dict], now: datetime) -> tuple[list[dict], list[dict]]:
+    """Update `state` and return the (golden, death) crosses to report."""
+    today = now.strftime("%Y-%m-%d")
+    tickers = state.setdefault("tickers", {})
+    golden, death = [], []
     for r in rows:
-        c = r.get("cross")
-        tag = f"{c['type'].upper()} CROSS on {c['date']}" if c else r["regime"]
-        gap = r["sma_fast"] / r["sma_slow"] - 1
-        lines.append(f"{r['ticker']:<6} close {r['close']:>10.2f}  SMA50 {r['sma_fast']:>10.2f}  "
-                     f"SMA200 {r['sma_slow']:>10.2f}  gap {gap:+.2%}  {tag}")
-        colour = "#16a34a" if r["regime"] == "bullish" else "#dc2626"
-        trs.append(f"<tr><td><b>{r['ticker']}</b></td><td>{r['close']:.2f}</td><td>{r['sma_fast']:.2f}</td>"
-                   f"<td>{r['sma_slow']:.2f}</td><td>{gap:+.2%}</td>"
-                   f"<td style='color:{colour};font-weight:600'>{tag}</td></tr>")
-    lines += ["", "Signal formed at the close; act no earlier than the next session.",
-              "Not investment advice - educational project."]
-    html = (f"<div style='font-family:Helvetica,Arial,sans-serif'><h2>{title}</h2>"
-            "<table cellpadding='6' style='border-collapse:collapse'><tr style='background:#f1f1f1'>"
-            "<th>Ticker</th><th>Close</th><th>SMA 50</th><th>SMA 200</th><th>Gap</th><th>Status</th></tr>"
-            + "".join(trs) + "</table><p style='color:#666;font-size:12px'>Signal formed at the close; "
-            "act no earlier than the next session. Educational project, not investment advice.</p></div>")
-    return "\n".join(lines), html
+        prev = tickers.get(r["ticker"])
+        if prev is None:                        # first time seen: nothing to compare with
+            tickers[r["ticker"]] = {"sign": r["sign"], "last_alert": None}
+            continue
+        if r["sign"] == prev["sign"]:
+            continue
+        prev["sign"] = r["sign"]
+        if prev.get("last_alert") == today:     # the averages are touching: no repeat today
+            continue
+        prev["last_alert"] = today
+        (golden if r["sign"] > 0 else death).append(r)
+        state.setdefault("history", []).insert(0, {
+            "time": now.strftime("%Y-%m-%d %H:%M"), "ticker": r["ticker"],
+            "type": "golden" if r["sign"] > 0 else "death", "price": r["price"]})
+    state["history"] = state.get("history", [])[:HISTORY_SIZE]
+    return golden, death
 
 
-def notify(rows: list[dict], title: str) -> None:
-    text, html = format_report(rows, title)
-    print(text)
-    send_email(title, text, html)
-    send_push(title, "\n".join(l for l in text.splitlines()[2:] if l.strip())[:3500])
+def send_digest(state: dict, rows: list[dict], now: datetime) -> None:
+    """One summary per session, on the first run after the US close (GitHub can start
+    that run hours late, hence the window running past midnight UTC)."""
+    hour = now.hour + now.minute / 60
+    session = (now - timedelta(hours=7)).strftime("%Y-%m-%d")
+    if not (hour >= DIGEST_HOUR_UTC or hour < 7) or state.get("digest_date") == session or os.getenv("DAILY_DIGEST") == "0":
+        return
+    crossed = {h["ticker"] for h in state.get("history", []) if h["time"] >= f"{session} 07:00"}
+    today_rows = [r for r in rows if r["ticker"] in crossed]
+    near = sorted((r for r in rows if abs(r["gap"]) < 0.01 and r["ticker"] not in crossed), key=lambda r: abs(r["gap"]))
+    title = f"SMA 50/200 daily summary: {len(today_rows)} cross(es) today"
+    body = _email_body(f"{title} ({len(rows)} tickers checked)", [
+        ("Crossed today:", today_rows), ("Close to crossing (gap under 1%):", near[:15])])
+    if send_email(title, *body):
+        state["digest_date"] = session
 
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--test", action="store_true", help="send a test notification")
-    p.add_argument("--digest", action="store_true", help="send the status table even without a cross")
-    p.add_argument("--lookback", type=int, default=1, help="sessions to look back for a cross")
+    p.add_argument("--test", action="store_true", help="send a sample alert")
+    p.add_argument("--state", default="state.json")
+    p.add_argument("--scan", default="scan.json")
     args = p.parse_args(argv)
 
     if args.test:
-        notify([latest_cross("SPY")], "Test - SMA crossover alerts are working")
-        return 0
+        rows = scan(get_closes(["SPY", "AAPL"]))
+        return 0 if send_cross_alert(rows[:1], rows[1:], prefix="TEST - ") else 1
 
-    rows, errors = [], []
-    for t in watchlist():
-        try:
-            rows.append(latest_cross(t, lookback=args.lookback))
-        except Exception as e:  # one bad ticker must not kill the whole job
-            errors.append(f"{t}: {e}")
-    for e in errors:
-        print("  warning:", e, file=sys.stderr)
+    path = Path(args.state)
+    state = json.loads(path.read_text()) if path.exists() and path.stat().st_size else {}
+    tickers = watchlist()
+    closes = get_closes(tickers)
+    rows = scan(closes)
+    if len(rows) < len(tickers) / 2:
+        print(f"Only {len(rows)}/{len(tickers)} tickers loaded: Yahoo problem, skipping this run.")
+        return 1
 
-    hits = [r for r in rows if r["cross"]]
-    if hits:
-        names = ", ".join(f"{r['ticker']} {r['cross']['type']}" for r in hits)
-        notify(hits, f"SMA 50/200 cross: {names}")
-    elif args.digest:
-        notify(rows, "SMA 50/200 daily status")
-    else:
-        print(f"No new cross on {len(rows)} tickers ({', '.join(r['ticker'] for r in rows)}).")
-    return 1 if errors and not rows else 0
+    now = datetime.now(timezone.utc)
+    golden, death = check(state, rows, now)
+    if golden or death:
+        send_cross_alert(golden, death)     # raises on failure: state is not saved, next run retries
+    send_digest(state, rows, now)
+
+    path.write_text(json.dumps(state, separators=(",", ":")))
+    Path(args.scan).write_text(json.dumps({
+        "checked_at": now.strftime("%Y-%m-%d %H:%M"), "rows": rows, "history": state.get("history", [])[:30],
+    }, separators=(",", ":")))
+    print(f"{now:%H:%M} UTC: {len(rows)}/{len(tickers)} tickers checked, "
+          f"{len(golden)} golden, {len(death)} death.")
+    return 0
 
 
 if __name__ == "__main__":

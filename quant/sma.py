@@ -45,12 +45,15 @@ def backtest(df: pd.DataFrame, signal: pd.Series, execution: str, cost_bps: floa
     return ret - change * cost_bps / 1e4, held
 
 
-def run(ticker: str = "SPY", years: int = 20, fast: int = 50, slow: int = 200,
-        cost_bps: float = 10.0, execution: str = "next_open") -> dict:
+def run(ticker: str = "SPY", years: int = 5, fast: int = 50, slow: int = 200,
+        cost_bps: float = 10.0, execution: str = "next_open", df: pd.DataFrame | None = None) -> dict:
+    """`df` (optional): Open/Close series to use instead of downloading `ticker`,
+    e.g. the value of a custom portfolio."""
     fast, slow = int(fast), int(slow)
     if not 2 <= fast < slow <= 400:
         raise DataError("Need 2 <= fast < slow <= 400.")
-    df = get_ohlc(ticker, period="max", min_obs=slow + 260)
+    if df is None:
+        df = get_ohlc(ticker, period="max", min_obs=slow + 260)
     full = df.copy()
     full["sma_fast"] = full["Close"].rolling(fast).mean()
     full["sma_slow"] = full["Close"].rolling(slow).mean()
@@ -126,21 +129,26 @@ def run(ticker: str = "SPY", years: int = 20, fast: int = 50, slow: int = 200,
     return to_json_safe(result)
 
 
-def latest_cross(ticker: str, fast: int = 50, slow: int = 200, lookback: int = 1) -> dict:
-    """Used by the alert job: did a cross happen in the last `lookback` sessions?"""
-    df = get_ohlc(ticker, period="3y", min_obs=slow + 5)
-    f = df["Close"].rolling(fast).mean()
-    s = df["Close"].rolling(slow).mean()
-    sign = np.sign(f - s).dropna()
-    recent = sign.diff().dropna().iloc[-lookback:]
-    hit = recent[recent != 0]
-    return {
-        "ticker": ticker.upper(), "as_of": df.index[-1].strftime("%Y-%m-%d"),
-        "close": float(df["Close"].iloc[-1]), "sma_fast": float(f.iloc[-1]), "sma_slow": float(s.iloc[-1]),
-        "regime": "bullish" if sign.iloc[-1] > 0 else "bearish",
-        "cross": None if hit.empty else {"date": hit.index[-1].strftime("%Y-%m-%d"),
-                                         "type": "golden" if hit.iloc[-1] > 0 else "death"},
-    }
+def scan(closes: pd.DataFrame, fast: int = 50, slow: int = 200) -> list[dict]:
+    """Current state of every column of `closes`: used by the alert job and the
+    scanner. The last row may be today's unfinished session."""
+    rows = []
+    for ticker in closes.columns:
+        c = closes[ticker].dropna()
+        if len(c) < slow + 2:
+            continue
+        f, s = c.rolling(fast).mean(), c.rolling(slow).mean()
+        sign = np.sign(f - s).dropna()
+        sign = sign[sign != 0]
+        flips = sign[sign != sign.shift(1)].iloc[1:]
+        rows.append({
+            "ticker": ticker, "as_of": c.index[-1].strftime("%Y-%m-%d"), "price": float(c.iloc[-1]),
+            "sma_fast": float(f.iloc[-1]), "sma_slow": float(s.iloc[-1]),
+            "gap": float(f.iloc[-1] / s.iloc[-1] - 1), "sign": int(sign.iloc[-1]),
+            "last_cross": flips.index[-1].strftime("%Y-%m-%d") if len(flips) else None,
+            "sessions_since": int(len(c.loc[flips.index[-1]:]) - 1) if len(flips) else None,
+        })
+    return rows
 
 
 if __name__ == "__main__":

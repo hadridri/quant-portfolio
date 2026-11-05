@@ -1,67 +1,46 @@
-# Quant Research Portfolio — Hadrien Bonhomme
+# Portfolio risk simulator
 
-Portfolio risk simulator, personal project in Python.
+Personal project in Python: a portfolio simulator to measure and manage risk,
+with market data from Yahoo Finance. Built with Streamlit.
 
-**Live site:** https://hadridri.github.io/quant-portfolio/
+| Tab | What it does |
+|-----|--------------|
+| **Portfolio & VaR** | Build a portfolio with your own tickers and weights, backtest it, Monte Carlo VaR and Expected Shortfall, correlation matrix, then find the allocation with the best Sharpe ratio, tested walk-forward without future data |
+| **Pairs trading** | Engle-Granger cointegration, rolling hedge ratio, z-score signals, with plain instructions on what to buy and sell today |
+| **Golden cross** | SMA 50/200 scanner on about 200 tickers, 5-year backtest against buy & hold, e-mail alert on each new cross |
 
-The site works on its own: every weekday, GitHub Actions runs the Python models
-(`build_static.py`) on about 40 tickers and publishes the results. For any other
-ticker, run the app locally (see below).
+## Run locally
 
-| # | Project | What it shows |
-|---|---------|---------------|
-| 01 | **Monte Carlo VaR & Expected Shortfall** | 10,000 Cholesky-correlated scenarios; MC vs parametric vs historical VaR; correlation sensitivity and crisis stress test |
-| 02 | **Pairs trading lab** | Any two tickers: Engle-Granger cointegration, rolling hedge ratio (no look-ahead), z-score signals with stop-loss, OU half-life, costs, rolling cointegration stability |
-| 03 | **SMA 50/200 crossover** | Next-open execution, transaction costs, buy & hold benchmark, look-ahead bias measurement, trending vs choppy years, **e-mail / push alert on every golden or death cross** |
+In **Spyder**: open `run_local.py` and press **F5**. Or from a terminal:
 
-## Run locally (any ticker)
+```bash
+pip install -r requirements.txt
+streamlit run streamlit_app.py
+```
 
-In **Spyder**: open `app.py`, press **F5**, then go to http://127.0.0.1:8050.
-The site then accepts any Yahoo Finance ticker and shows every setting.
-
-Each model also runs on its own in Spyder (F5 on `quant/montecarlo.py`, `quant/pairs.py`, `quant/sma.py`)
-or from a terminal: `python -m quant.pairs`.
+Each model also runs on its own in Spyder: `quant/montecarlo.py`, `quant/portfolio.py`, `quant/pairs.py`, `quant/sma.py`.
 
 ## Structure
 
 ```
-app.py                 Flask server (API + website)
-build_static.py        runs the models on ~40 tickers into site/data (daily, GitHub Actions)
+streamlit_app.py       entry point
+views/                 one file per page, common.py for shared helpers
 quant/
-  data.py              yfinance download, 6-hour disk cache, performance stats
-  montecarlo.py        Project 1
-  pairs.py             Project 2
-  sma.py               Project 3
-  alert.py             golden / death cross notifier (SMTP e-mail + ntfy push)
-site/                  index.html + one page per project, assets/, data/
+  universe.py          tickers offered in the app and scanned for alerts
+  data.py              yfinance download, 15-minute cache
+  montecarlo.py        VaR and Expected Shortfall (Cholesky-correlated simulation)
+  portfolio.py         backtest, max Sharpe optimiser, walk-forward test
+  pairs.py             cointegration, z-score, half-life, trade instructions
+  sma.py               SMA 50/200 backtest and scanner
+  alert.py             golden / death cross e-mails
 .github/workflows/
-  sma-alert.yml        daily cross check after the US close
-  pages.yml            rebuilds snapshots and deploys site/ to GitHub Pages
+  sma-alert.yml        runs alert.py every 15 minutes on market days
 ```
 
-## SMA cross alerts
+## E-mail alerts
 
-The alert runs on GitHub Actions every weekday at 21:30 UTC, so it works with the laptop closed.
-
-1. Create a Gmail **App Password** (Google Account → Security → 2-Step Verification → App passwords).
-2. In the repo: Settings → Secrets and variables → Actions:
-   - Secrets: `SMTP_USER`, `SMTP_PASSWORD`, `ALERT_TO`, optionally `NTFY_TOPIC`
-   - Variable: `WATCHLIST` (e.g. `SPY,QQQ,AAPL,MSFT`)
-3. Actions → *SMA crossover alert* → Run workflow → mode `test`.
-
-Local equivalent: `export SMTP_HOST=smtp.gmail.com SMTP_USER=... SMTP_PASSWORD=...` then `python -m quant.alert --test`.
-
-## Deploy the website
-
-Push to GitHub, then Settings → Pages → Source: **GitHub Actions**. The `pages.yml` workflow refreshes the
-data every weekday. On Pages the site shows the snapshot presets; custom tickers need the Flask API
-(locally, or on a free host such as Render with `python app.py`).
-
-## Methodology notes
-
-- Signals are always executed **after** they are known: next close for pairs, next open for SMA.
-- The pairs hedge ratio is a rolling OLS lagged by one day; the full-sample β is reported only for diagnosis.
-- Costs are charged on every position change (both legs for pairs).
-- Annualisation uses 252 trading days. For crypto (365-day markets), treat ratios as approximate.
+GitHub Actions runs `quant/alert.py` every 15 minutes on market days, using the latest price as today's
+provisional close, plus one summary after the US close. Secrets: `SMTP_USER`, `SMTP_PASSWORD`
+(Gmail App Password), `ALERT_TO`. Optional variables: `WATCHLIST` (extra tickers), `DAILY_DIGEST` (`0` to disable).
 
 *Educational project, not investment advice.*
