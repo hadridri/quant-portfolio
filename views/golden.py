@@ -2,7 +2,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from views.common import (BLUE, GREEN, GREY, NAMES, ORANGE, RED, DataError, active, get_alert_status, get_scan, get_sma,
+from views.common import (BLUE, GREEN, GREY, NAMES, PEA, ORANGE, RED, DataError, active, get_alert_status, get_scan, get_sma,
                           get_sma_portfolio, label, md, num, pct, show_chart, ticker_options)
 
 st.title("Golden cross")
@@ -12,7 +12,7 @@ st.write("Golden cross: the 50-day average moves above the 200-day average, the 
 st.header("E-mail alerts")
 status = get_alert_status()
 if status:
-    st.success(f"Active. {len(status['rows'])} tickers are checked several times a day and an e-mail is sent on each new cross. "
+    st.success(f"Active. {len(status['rows'])} tickers are checked every 5 minutes on market days and an e-mail is sent on each new cross. "
                f"Last check: {status['checked_at']} UTC.")
     if status["history"]:
         alerts = pd.DataFrame(status["history"][:10])
@@ -35,9 +35,10 @@ if scan.empty:
     st.error("Yahoo Finance is not responding. Try Refresh in a moment.")
     st.stop()
 
-left, right = st.columns([3, 1])
+left, mid, right = st.columns([3, 1, 1])
 view = left.segmented_control("Show", ["New golden crosses", "New death crosses", "Close to crossing", "All"],
                               default="New golden crosses", label_visibility="collapsed") or "All"
+pea = mid.toggle("PEA only")
 mine = right.toggle("My portfolio only")
 
 table = scan.copy()
@@ -50,6 +51,8 @@ elif view == "Close to crossing":
     table = table[table["gap"].abs() < 0.02].assign(order=lambda d: d["gap"].abs()).sort_values("order")
 else:
     table = table.sort_values("ticker")
+if pea:
+    table = table[table["ticker"].isin(PEA)]
 if mine:
     table = table[table["ticker"].isin(active()["weights"])]
 

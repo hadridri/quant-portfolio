@@ -1,5 +1,11 @@
 # Golden / death cross e-mail alerts, run by GitHub so the laptop can stay off.
-# Every 15 minutes on market days. GitHub can start scheduled runs late.
+#
+# GitHub drops many scheduled runs (a 15-minute cron ran only 2-3 times a day), so one
+# run stays open during market hours and checks every 5 minutes by itself. A job lasts
+# at most 6 hours: before that, the run starts the next one. The cron lines start the
+# day at 06:00 UTC and restart the loop if it ever stops; a run that finds another one
+# already checking stops at once.
+#
 # Secrets: SMTP_USER, SMTP_PASSWORD (Gmail App Password), ALERT_TO.
 # Variables (optional): WATCHLIST (extra tickers), DAILY_DIGEST ("0" to disable the daily summary).
 # state.json and scan.json are kept on the alerts-data branch.
@@ -7,7 +13,8 @@ name: SMA crossover alert
 
 on:
   schedule:
-    - cron: "7,22,37,52 7-21 * * 1-5"
+    - cron: "0 6 * * 1-5"
+    - cron: "17 7-20 * * 1-5"
   workflow_dispatch:
     inputs:
       mode:
@@ -18,15 +25,32 @@ permissions:
   contents: write
   actions: write
 
-concurrency:
-  group: sma-alert
+env:
+  GH_TOKEN: ${{ github.token }}
+  MODE: ${{ github.event.inputs.mode || 'check' }}
 
 jobs:
-  alert:
+  guard:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    outputs:
+      busy: ${{ steps.busy.outputs.busy }}
+    steps:
+      - id: busy
+        run: |
+          busy=0
+          if [ "$MODE" = check ]; then
+            busy=$(gh run list -R "$GITHUB_REPOSITORY" -w sma-alert.yml -L 20 --json databaseId,status \
+                   --jq "[.[] | select(.databaseId != $GITHUB_RUN_ID and .status != \"completed\")] | length")
+          fi
+          echo "busy=$busy" >> "$GITHUB_OUTPUT"
+          [ "$busy" = 0 ] || echo "Another run is already checking."
+
+  alert:
+    needs: guard
+    if: needs.guard.outputs.busy == '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
     env:
-      GH_TOKEN: ${{ github.token }}
       WATCHLIST: ${{ vars.WATCHLIST }}
       DAILY_DIGEST: ${{ vars.DAILY_DIGEST }}
       SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
@@ -44,27 +68,38 @@ jobs:
       - run: pip install -r requirements-alert.txt
 
       - name: Send a test alert
-        if: github.event.inputs.mode == 'test'
+        if: env.MODE == 'test'
         run: python -m quant.alert --test
 
-      - name: Load the previous state
-        if: github.event.inputs.mode != 'test'
-        run: git fetch --depth=1 origin alerts-data && git show FETCH_HEAD:state.json > state.json || rm -f state.json
-
-      - name: Check crosses
-        if: github.event.inputs.mode != 'test'
-        run: python -m quant.alert
-
-      - name: Publish state and scan
-        if: github.event.inputs.mode != 'test'
+      - name: Check every 5 minutes until the US close
+        if: env.MODE != 'test'
         run: |
-          mkdir publish && cp state.json scan.json publish/ && cd publish
-          git init -q -b alerts-data
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add . && git commit -qm "Alert data"
-          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" alerts-data
+          git fetch -q --depth=1 origin alerts-data && git show FETCH_HEAD:state.json > state.json || rm -f state.json
+
+          publish() (
+            rm -rf publish && mkdir publish && cp state.json scan.json publish/ && cd publish
+            git init -q -b alerts-data && git add .
+            git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+                commit -qm "Alert data"
+            git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" alerts-data
+          )
+          in_window() {   # weekdays, 06:00 to 21:20 UTC: Europe open to just after the US close
+            [ "$(date -u +%u)" -le 5 ] && [ "$(date -u +%H%M)" -ge 0600 ] && [ "$(date -u +%H%M)" -lt 2120 ]
+          }
+
+          stop_at=$(( $(date +%s) + 340 * 60 ))      # stay under the 6-hour job limit
+          while :; do
+            python -m quant.alert || echo "Check failed, next try in 5 minutes."
+            [ -f scan.json ] && { publish || echo "Publish failed."; }
+            in_window || exit 0                      # after the close: last check (and daily summary) done
+            if [ "$(date +%s)" -ge "$stop_at" ]; then
+              gh workflow run sma-alert.yml -R "$GITHUB_REPOSITORY" -f mode=chain
+              exit 0
+            fi
+            sleep $(( 300 - $(date +%s) % 300 + 20 ))
+          done
 
       # GitHub pauses schedules after 60 days without commits on the default branch
       - name: Keep the schedule alive
-        run: gh workflow enable sma-alert.yml
+        if: always()
+        run: gh workflow enable sma-alert.yml -R "$GITHUB_REPOSITORY"

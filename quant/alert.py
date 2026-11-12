@@ -1,8 +1,8 @@
 """Golden / death cross e-mail alerts.
 
-Runs on GitHub Actions every 15 minutes on market days. Each run scans every ticker of
-quant/universe.py (plus the WATCHLIST variable) using the latest price as today's
-provisional close, and sends an e-mail when SMA 50 has crossed SMA 200.
+Runs on GitHub Actions every 5 minutes on market days (see .github/workflows/sma-alert.yml).
+Each check scans every ticker of quant/universe.py (plus the WATCHLIST variable) using the
+latest price as today's provisional close, and sends an e-mail when SMA 50 has crossed SMA 200.
 
 state.json remembers which side each ticker was on, so a cross is reported once.
 One e-mail per ticker per day at most, even if the averages touch several times.

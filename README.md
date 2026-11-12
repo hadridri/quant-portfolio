@@ -34,12 +34,12 @@ quant/
   sma.py               SMA 50/200 backtest and scanner
   alert.py             golden / death cross e-mails
 .github/workflows/
-  sma-alert.yml        runs alert.py every 15 minutes on market days
+  sma-alert.yml        runs alert.py every 5 minutes on market days
 ```
 
 ## E-mail alerts
 
-GitHub Actions runs `quant/alert.py` every 15 minutes on market days, using the latest price as today's
+GitHub Actions runs `quant/alert.py` every 5 minutes on market days (one run loops through the session), using the latest price as today's
 provisional close, plus one summary after the US close. Secrets: `SMTP_USER`, `SMTP_PASSWORD`
 (Gmail App Password), `ALERT_TO`. Optional variables: `WATCHLIST` (extra tickers), `DAILY_DIGEST` (`0` to disable).
 

@@ -13,7 +13,7 @@ import streamlit as st
 
 from quant import data, montecarlo, pairs, portfolio, sma
 from quant.data import DataError
-from quant.universe import NAMES, UNIVERSE, label
+from quant.universe import NAMES, PEA, UNIVERSE, label
 
 REFRESH_SECONDS = 15 * 60
 SCAN_URL = "https://raw.githubusercontent.com/hadridri/quant-portfolio/alerts-data/scan.json"
