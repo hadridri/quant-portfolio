@@ -7,7 +7,7 @@ with market data from Yahoo Finance. Built with Streamlit.
 |-----|--------------|
 | **Portfolio & VaR** | Build a portfolio with your own tickers and weights, backtest it, Monte Carlo VaR and Expected Shortfall, correlation matrix, then find the allocation with the best Sharpe ratio, tested walk-forward without future data |
 | **Pairs trading** | Engle-Granger cointegration, rolling hedge ratio, z-score signals, with plain instructions on what to buy and sell today |
-| **Golden cross** | SMA 50/200 scanner on about 200 tickers, 5-year backtest against buy & hold, e-mail alert on each new cross |
+| **Golden cross** | SMA 50/200 scanner on about 300 tickers (137 PEA-eligible), 5-year backtest against buy & hold, e-mail alert on each new cross |
 
 ## Run locally
 
